@@ -5,6 +5,9 @@ using StaticArrays
 using LinearAlgebra
 using Roots
 
+# The thread switching this does is not desirable at all
+LinearAlgebra.BLAS.set_num_threads(1)
+
 
 # Vec3_F64 = Union{SVector{Float64,3},Vector{Float64}}
 # define static convenience types
@@ -237,16 +240,38 @@ function calc_lambda(A::Matrix{Float64}, Jpm::Float64,
     return calc_lambda(k -> diagonalise_M(k, A, Jpm, B), nsample, kappa)
 end
 
-struct SimulationParameters
+"""
+    SimulationParameters
+
+Members:
     A::Matrix{Float64}
     Jpm::Float64
     B::Vec3_F64
     λ::Float64
     lat::geom.PyroFCC
 
-    function SimulationParameters(A, Jpm, B, nsample=10000,  kappa=1.0)
+Constructor:
+    SimulationParameters(;A, Jpm, B, nsample=10000,  kappa=1.0)
+    `A` is the emergent vector potential
+    `Jpm` and `B` are Hamiltonian parameters in units of `J_z`
+    `lat` is the lattice
+    `λ` is the emergent chemical potential.
+"""
+struct SimulationParameters
+    A::Matrix{Float64}
+    Jpm::Float64
+    B::Vec3_F64
+    λ::Float64
+    lat::geom.PyroFCC
+    name::String
+
+    function SimulationParameters(name; A, Jpm, B, nsample=10000,  kappa=1.0)
         L = round(Int, (size(A)[1]/4)^(1/3))
-        new(A, Jpm, B, calc_lambda(A, Jpm, B, nsample, kappa), geom.PyroFCC(L) )
+        new(A, Jpm, B, calc_lambda(A, Jpm, B, nsample, kappa), geom.PyroFCC(L), name )
+    end
+      
+    function SimulationParameters(x::Dict{String, Any})
+        new(x["fluxes"], x["Jpm"], x["B"], x["lambda"], geom.PyroFCC(x["L"]),x["name"])
     end
 end
 
@@ -322,6 +347,9 @@ function specweight_at(q, Δ, sim::SimulationParameters)
 end
 
 """
+    spectral_weight(q, Egrid, sim::SimulationParameters, 
+						 nsample::Int=1000, grid_density::Int=1000
+						 )
 
 Calculates the spectral weight at point `q`.
 
