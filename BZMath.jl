@@ -1,4 +1,6 @@
+module BZmath
 
+export BZPath, generate_path
 
 function lerp(x0, x1, step)
     d = norm(x0-x1)
@@ -58,4 +60,5 @@ function generate_path(point_dict, pathspec; points_per_unit=20, K_units=1.)
     return BZPath(T, K, t_ticks, pathspec)
 end
 
+end
 

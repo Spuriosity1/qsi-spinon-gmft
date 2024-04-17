@@ -1,3 +1,7 @@
+module SpinonStructure
+
+
+
 include("PyrochloreGeometry.jl")
 import .PyrochloreGeometry as geom
 import CSV
@@ -5,11 +9,11 @@ using StaticArrays
 using LinearAlgebra
 using Roots
 
+export load_A, calc_fluxes, SimulationParameters, spinon_dispersion, IntegrationParameters, geom
+
 # The thread switching this does is not desirable at all
 LinearAlgebra.BLAS.set_num_threads(1)
 
-
-# Vec3_F64 = Union{SVector{Float64,3},Vector{Float64}}
 # define static convenience types
 
 const Vec3 = geom.Vec3;
@@ -288,101 +292,19 @@ function spinon_dispersion(k::Union{Vec3_F64,Vector{Float64}}, sim::SimulationPa
     return sqrt.(2*(ϵ.+ sim.λ )), U
 end
 
-@inline function gaussian(x,σ)
-    local N = 1/√(2π)
-    return N*exp(-0.5*(x/σ)^2)/σ
+
+
+"""
+    IntegrationParameters(n_K_samples::Int, BZ_grid_density::Int, broadening_dE::Float64)
+
+n_K_samples - number of points to use for the MC integration
+BZ_grid_density - effective length of the system
+broadening_DE - lifetime broadening parameter for the Lorentzians
+"""
+@kwdef struct IntegrationParameters
+    n_K_samples::Int
+    BZ_grid_density::Int
+    broadening_dE::Float64
 end
 
-
-
-
-################################################################################
-### Calculating the spectral weight
-################################################################################
-
-"""
-	specweight_at(q, Δ, sim)
-	-> E, S
-
-Calculates the contribution of kspace points(q ± Δ) to the Δ integral in 
-`spectral_weight`. Let there be N tetrahedra in `sim`, i.e. N bands.
-Returns: 
-`E`, an (N, N) matrix of e1 + e2 energies corresponding to Dirac delta peaks
-`S`, an (N, N) matrix of spectral weights giving the heights of these peaks
-"""
-function specweight_at(q, Δ, sim::SimulationParameters)
-    E1, U1 = spinon_dispersion( Δ+q, sim)
-    E2, U2 = spinon_dispersion(-Δ+q, sim)
-     
-    # the form factor
-    W = (0.5+0im) .* [ 
-        2 1 1 1; 
-        1 2 1 1;
-        1 1 2 1;
-        1 1 1 2 
-    ]
-
-    for mu=1:4, nu=1:4
-        # this is e^{i Δ • (b_mu + b_nu)/2 ), factoes of 2 cancel since pyro is 1/2 b
-        W[mu,nu] *= exp(1im*Δ'* (geom.pyro[mu] + geom.pyro[nu])) 
-    end
-
-    local f=length(sim.lat.tetra_sites)
-    S = zeros(f,f)
-    for mu=1:4, nu=1:4
-        for (jA, rA) in enumerate(sim.lat.A_sites), (jpA, rpA) in enumerate(sim.lat.A_sites)
-            jB = geom.tetra_idx(sim.lat, rA + geom.pyro[mu])
-            jpB = geom.tetra_idx(sim.lat, rpA + geom.pyro[nu])
-
-            # the "l" bit
-            x1 = U1[jA, :] .* conj(U1[jpA, :]) ./ (2*E1) 
-            # the "l'" bit
-            x2 = U2[jB, :] .* conj(U2[jpB, :]) ./ (2*E2) 
-            
-            S += W[mu,nu]*x1*x2'*exp(1im*(sim.A[jA,mu]-sim.A[jpA, nu]))
-        end
-    end
-    E = reduce(hcat, [[e1 + e2 for e1 in E1] for e2 in E2])::Matrix{Float64}
-    return E, S
 end
-
-"""
-    spectral_weight(q, Egrid, sim::SimulationParameters, 
-						 nsample::Int=1000, grid_density::Int=1000
-						 )
-
-Calculates the spectral weight at point `q`.
-
-This performs a Monte Carlo integral over the Brillouin zone.
-`grid_density` sets the number of points in one dimension of the Brillouin zone.
-`nsample` is the number of these k-points to sample.
-
-"""
-function spectral_weight(q, Egrid, sim::SimulationParameters, 
-						 nsample::Int=1000, grid_density::Int=1000
-						 )
-    # cursed Monte Carlo integration
-    num_flavours = div(length(sim.A),2)
-    res = 0
-
-    p_vals = π*rand((-grid_density,grid_density),nsample,3)/8/grid_density
-    
-    Sqω = zeros(ComplexF64,size(Egrid))
-    # perform an MC integral
-    dE = 3*(Egrid[2]-Egrid[1])
-
-    bounds = [Inf, -Inf]
-    
-    for p in eachrow(p_vals)
-        Enm, Snm = specweight_at(q, p, sim)
-        Sqω += map(
-            e-> sum( [S*gaussian(e - E, dE) for (E,S) in zip(Enm,Snm)]),
-                Egrid)
-        bounds[1] = min(bounds[1], reduce(min,  Enm) ) 
-        bounds[2] = max(bounds[2], reduce(max,  Enm) )
-    end
-    return Sqω, bounds
-end
-
-
-
