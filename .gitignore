@@ -1,3 +1,12 @@
 .ipynb_checkpoints
 .virtual_documents
 __pycache__
+output
+bin
+etc
+include
+lib
+lib64
+output
+pyvenv.cfg
+share

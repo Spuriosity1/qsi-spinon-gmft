@@ -225,7 +225,7 @@ function calc_lambda(bandf, nsample::Int=1000, kappa::Float64=1)
     max_lam = kappa^(-2) /2 - minimum(eps)
     
     function constr(λ)
-        return mean( (eps .+ λ).^-0.5)/sqrt(2) - kappa
+        return sum( (eps .+ λ).^-0.5)/length(eps)/sqrt(2) - kappa
     end
 
     # function constr_p(λ)

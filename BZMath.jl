@@ -2,6 +2,7 @@ module BZmath
 
 export BZPath, generate_path
 
+using LinearAlgebra
 function lerp(x0, x1, step)
     d = norm(x0-x1)
     T = reverse(range(start=1,stop=0, step=-step/d))
