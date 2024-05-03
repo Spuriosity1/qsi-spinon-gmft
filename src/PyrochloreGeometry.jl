@@ -136,6 +136,7 @@ function tetra_idx(lattice::PyroFCC, tetra_pos_::Vec3)
     I = mod.(div.(tmp,8),L)
 
     idx =  (diamond_sl-1) * L^3*4 + I[1]*L^2*4 + I[2]*L*4 + I[3]*4 + fcc_sl
+   
     return idx
 end
 

@@ -9,7 +9,7 @@ using StaticArrays
 using LinearAlgebra
 using Roots
 
-export load_A, calc_fluxes, SimulationParameters, spinon_dispersion, IntegrationParameters, geom
+export load_A, calc_fluxes, SimulationParameters, spinon_dispersion, IntegrationParameters, geom, spectral_weight
 
 # The thread switching this does is not desirable at all
 LinearAlgebra.BLAS.set_num_threads(1)
@@ -193,7 +193,7 @@ function diagonalise_M(k, A::Matrix{Float64}, Jpm = -1., B = [0.,0.,0.])
 
     @assert norm(H - H') < 1e-10
     
-    eps, U = eigen!(Hermitian(H))
+    eps, U = eigen!(H)
     
     
     return eps, U
@@ -306,5 +306,96 @@ broadening_DE - lifetime broadening parameter for the Lorentzians
     BZ_grid_density::Int
     broadening_dE::Float64
 end
+
+
+################################################################################
+### Calculating the spectral weight
+################################################################################
+
+"""
+	specweight_at(q, Δ, sim)
+	-> E, S
+
+Calculates the contribution of kspace points(q ± Δ) to the Δ integral in 
+`spectral_weight`. Let there be N tetrahedra in `sim`, i.e. N bands.
+Returns: 
+`E`, an (N, N) matrix of e1 + e2 energies corresponding to Dirac delta peaks
+`S`, an (N, N) matrix of spectral weights giving the heights of these peaks
+"""
+function specweight_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
+    S = 0
+    
+    E1, U1 = spinon_dispersion( p, sim )
+    E2, U2 = spinon_dispersion( q-p, sim )
+
+    W = zeros(ComplexF64,4,4)
+    
+    for μ=1:4, ν=1:4
+        W[μ,ν] = exp(2im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
+    end
+    
+
+    local f=length(sim.lat.tetra_sites)
+    S = zeros(f,f)
+    for μ=1:4, ν=1:4
+        for (jA, rA) in enumerate(sim.lat.A_sites), (jpA, rpA) in enumerate(sim.lat.A_sites)
+            jB = geom.tetra_idx(sim.lat, rA + 2*geom.pyro[μ])
+            jpB = geom.tetra_idx(sim.lat, rpA + 2*geom.pyro[ν])
+
+            # the "l" bit
+            x1 = U1[jA, :] .* conj(U1[jpA, :]) ./ (2*E1) 
+            # the "l'" bit
+            x2 = U2[jpB, :] .* conj(U2[jB, :]) ./ (2*E2) # <--- calculation says this one
+            # x2 = U2[jB, :] .* conj(U2[jpB, :]) ./ (2*E2) # makes no difference 
+            
+            
+            S += W[μ,ν]*exp(1im*(sim.A[jA,μ]-sim.A[jpA, ν])) * x2*x1'
+        end
+    end
+    E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
+    return E, S
+end
+
+
+"""
+    spectral_weight(q, Egrid, sim::SimulationParameters, 
+						 nsample::Int=1000, grid_density::Int=1000
+						 )
+
+Calculates the spectral weight at point `q`.
+
+This performs a Monte Carlo integral over the Brillouin zone.
+`grid_density` sets the number of points in one dimension of the Brillouin zone.
+`nsample` is the number of these k-points to sample.
+
+"""
+function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64}, sim::SimulationParameters, 
+						 integral_params::IntegrationParameters
+						 )
+    # cursed Monte Carlo integration
+    grid_density=integral_params.BZ_grid_density
+
+    Sqω = zeros(ComplexF64,size(Egrid))
+    # perform an MC integral
+    # dE = (Egrid[2]-Egrid[1])*broaden_factor
+
+    bounds = [Inf, -Inf]
+    
+    for _ = 1:integral_params.n_K_samples
+        
+        p = (1 .- 2 .*(@SVector rand(3)))*8π/8
+        
+        Enm, Snm = specweight_at(q, p, sim)
+        Sqω += map(
+            e-> sum( [S*Lorentzian(e - E, integral_params.broadening_dE) for (E,S) in zip(Enm,Snm)]),
+                Egrid)
+        bounds[1] = min(bounds[1], reduce(min,  Enm) ) 
+        bounds[2] = max(bounds[2], reduce(max,  Enm) )
+    end
+    return Sqω, bounds
+end
+
+
+
 
 end
