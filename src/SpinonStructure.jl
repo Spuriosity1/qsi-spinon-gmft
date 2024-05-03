@@ -303,7 +303,6 @@ broadening_DE - lifetime broadening parameter for the Lorentzians
 """
 @kwdef struct IntegrationParameters
     n_K_samples::Int
-    BZ_grid_density::Int
     broadening_dE::Float64
 end
 
@@ -311,6 +310,18 @@ end
 ################################################################################
 ### Calculating the spectral weight
 ################################################################################
+
+@inline function gaussian(x,σ)
+    local N = 1/√(2π)
+    return N*exp(-0.5*(x/σ)^2)/σ
+end
+
+@inline function Lorentzian(x, Γ)
+    local N = 1/π
+    Γ /= 2
+    return N*1. * Γ/(x^2 + Γ^2)
+end
+
 
 """
 	specweight_at(q, Δ, sim)
@@ -358,23 +369,27 @@ end
 
 
 """
-    spectral_weight(q, Egrid, sim::SimulationParameters, 
-						 nsample::Int=1000, grid_density::Int=1000
-						 )
+spectral_weight(q, Egrid, sim::SimulationParameters,
+integral_params::IntegrationParameters)
 
 Calculates the spectral weight at point `q`.
 
-This performs a Monte Carlo integral over the Brillouin zone.
-`grid_density` sets the number of points in one dimension of the Brillouin zone.
-`nsample` is the number of these k-points to sample.
+This performs a Monte Carlo integral of the spin-spin correlator <S+Sz+> over
+the Brillouin zone.
+
+	@param Egrid the energy dgrids to integrate over 
+	@param sim the physical
+	parameters of the problem 
+	@param integral_params the detials for doing the integration
+
+	@return Sqω, bounds the spectral weight and a two-element vector
+		[min,max] voinding the spectral weight
 
 """
-function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64}, sim::SimulationParameters, 
-						 integral_params::IntegrationParameters
-						 )
-    # cursed Monte Carlo integration
-    grid_density=integral_params.BZ_grid_density
+function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
+	sim::SimulationParameters, integral_params::IntegrationParameters)
 
+    # cursed Monte Carlo integration
     Sqω = zeros(ComplexF64,size(Egrid))
     # perform an MC integral
     # dE = (Egrid[2]-Egrid[1])*broaden_factor
@@ -383,8 +398,9 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64}, sim::SimulationPar
     
     for _ = 1:integral_params.n_K_samples
         
-        p = (1 .- 2 .*(@SVector rand(3)))*8π/8
-        
+        p = (1 .- 2 .*(@SVector rand(3)))*8π/8         
+		#overkill but definitely not too small
+		#
         Enm, Snm = specweight_at(q, p, sim)
         Sqω += map(
             e-> sum( [S*Lorentzian(e - E, integral_params.broadening_dE) for (E,S) in zip(Enm,Snm)]),

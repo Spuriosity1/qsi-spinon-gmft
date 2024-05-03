@@ -250,5 +250,13 @@ function get_hexagons(lattice::PyroFCC)
 end
 
 
+const high_symmetry_points = Dict(
+    "\\Gamma"=> [0.,0.,0.],
+    "X"=> [1.,0.,0.],
+    "W"=> [1.,0.5,0.],
+    "K"=> [0.75,0.75,0.],
+    "L"=> [0.5,0.5,0.5],
+    "U"=> [1.0, 0.25,0.25]
+)
 
 end
