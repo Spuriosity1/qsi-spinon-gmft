@@ -11,7 +11,7 @@ magnetic_fields = vcat(
 simlist = map(
     b->SimulationParameters("piflux",
         A=A,
-        Jpm=1./3,
+        Jpm=1. /3,
         B=b,
         nsample=1000,
         kappa=2.0

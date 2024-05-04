@@ -11,6 +11,7 @@ println("minimum B = ",Bmin)
 
 simlist = [SimulationParameters("pipi00", A=A_ππ00, Jpm=Jpm, B=B0*[1,1,0]/sqrt(2), nsample=1000, kappa=2.0) for B0 in (Bmin, Bmin+0.1, Bmin+0.2,Bmin+0.3)] 
 
+
 ip = integration_settings["very_slow"]
 
 Egrid = collect(range(0,3,150))
@@ -18,7 +19,7 @@ Egrid = collect(range(0,3,150))
 figure_dir = "figures/"
 
 path = generate_path(geom.high_symmetry_points, 
-    split("\\Gamma X W K \\Gamma L U W"), points_per_unit=10, K_units=4π/8)
+    split("\\Gamma X W K \\Gamma L U W"), points_per_unit=31, K_units=4π/8)
 
 println("Plotting spinon dispersions...")
 # plot the spinons

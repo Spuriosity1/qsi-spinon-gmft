@@ -18,7 +18,7 @@ simlist = map(
         ),
     magnetic_fields);
 
-ip = integration_settings["slow"]
+ip = integration_settings["very_slow"]
 
 Egrid = collect(range(0,1.4,150))
 
