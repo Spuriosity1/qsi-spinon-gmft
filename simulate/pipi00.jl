@@ -9,8 +9,18 @@ Jpm = -0.05
 Bmin =sqrt(-9*Jpm/5)
 println("minimum B = ",Bmin)
 
-simlist = [SimulationParameters("pipi00", A=A_ππ00, Jpm=Jpm, B=B0*[1,1,0]/sqrt(2), nsample=1000, kappa=2.0) for B0 in (Bmin, Bmin+0.1, Bmin+0.2,Bmin+0.3)] 
+# a cheap hack to see different directions
+magnetic_fields = [B0*[1,1,0]/sqrt(2)  for B0 in (Bmin, Bmin+0.1, Bmin+0.2,Bmin+0.3)]
+    
 
+println("Calculating chemical potentials")
+
+simlist = []
+@showprogress for b in magnetic_fields
+    push!(simlist,
+        SimulationParameters("pipi00", A=A_ππ00, Jpm=Jpm, B=b, nsample=100000, kappa=2.0)
+        )
+end
 
 ip = integration_settings["very_slow"]
 

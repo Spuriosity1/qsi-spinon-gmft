@@ -215,7 +215,7 @@ and eigenvector matrix. (The eigenvectors are not used)
 The integral is done using Monte Carlo, samples "nsample" times.
 """
 function calc_lambda(bandf, nsample::Int=1000, kappa::Float64=1)
-    K = rand(Float64, (nsample, 3) )*4π/8
+    K = rand(Float64, (nsample, 3) )*π
     
     eps = reduce(vcat, map(k->bandf(k)[1],eachrow(K))')
 
@@ -277,6 +277,10 @@ struct SimulationParameters
     function SimulationParameters(x::Dict{String, Any})
         new(x["fluxes"], x["Jpm"], x["B"], x["lambda"], geom.PyroFCC(x["L"]),x["name"])
     end
+
+    function SimulationParameters(other::SimulationParameters, delta_λ::Float64)
+        new(other.A, other.Jpm, other.B, other.λ + delta_λ, geom.PyroFCC(other.lat.L), other.name)
+    end
 end
 
 """
@@ -288,7 +292,10 @@ parameters. E and U are respectively the spinon energies and the eigenvectors
 of the hopping matrix.
 """
 function spinon_dispersion(k::Union{Vec3_F64,Vector{Float64}}, sim::SimulationParameters)
-    ϵ, U = diagonalise_M(k, sim.A, sim.Jpm, sim.B)    
+    ϵ, U = diagonalise_M(k, sim.A, sim.Jpm, sim.B)
+    if minimum(ϵ.+ sim.λ ) < 0
+        println("gap closing found near k = $(k)")
+    end
     return sqrt.(2*(ϵ.+ sim.λ )), U
 end
 
@@ -378,8 +385,7 @@ This performs a Monte Carlo integral of the spin-spin correlator <S+Sz+> over
 the Brillouin zone.
 
 	@param Egrid the energy dgrids to integrate over 
-	@param sim the physical
-	parameters of the problem 
+	@param sim the physical parameters of the problem 
 	@param integral_params the detials for doing the integration
 
 	@return Sqω, bounds the spectral weight and a two-element vector

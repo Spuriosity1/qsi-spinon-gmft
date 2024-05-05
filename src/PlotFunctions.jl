@@ -11,6 +11,23 @@ using HDF5
 using Printf
 
 
+#=
+const kspace_points = Dict(
+    "\\Gamma"=> [0.,0.,0.],
+    "X"=> [1.,0.,0.],
+    "Y"=> [0.,1.,0.],
+    "Z"=> [0.,0.,1.],
+    "W_X"=> [1.,0.5,0.],
+    "W_Y"=> [0.,1.,0.5],
+    "W_Z"=> [0.5,0.,1.],
+    "K_{XY}"=> [0.75,0.75,0.],
+    "K_{YZ}"=> [0.,0.75,0.75],
+    "K_{ZX}"=> [0.75,0.,0.75],
+    "L"=> [0.5,0.5,0.5],
+    "U"=> [1.0, 0.25,0.25]
+)
+=#
+
 # A 'hash function' providing an informative filenmae for simulation data
 function sim_identifier(sim::SimulationParameters)
     return @sprintf("?name=%s?J_pm=%.3f?B=[%.3f,%.3f,%.3f]",
@@ -27,6 +44,7 @@ function save_SQW(output_dir::String;
         prefix="SQW")
 
     name = output_dir*"/"*prefix*sim_identifier(sim)
+    rm(name, force=true)
     jldopen(name, "w") do file
         g1 = create_group(file, "integration_parameters")
         g1["n_K_samples"] = ip.n_K_samples
@@ -45,10 +63,10 @@ function save_SQW(output_dir::String;
         d["S"] = S
         d["bounds"] = bounds
         # a list of K points, such that the I'th S slics corresponds to the I'th K point
-        d["Q_list"] = path.K 
-        d["tau"] = path.t
-        d["ticks_tau"] = path.ticks_t
-        d["ticks_label"] = path.ticks_label
+        d["Q_list"] = BZ_path.K 
+        d["tau"] = BZ_path.t
+        d["ticks_tau"] = BZ_path.ticks_t
+        d["ticks_label"] = BZ_path.ticks_label
         d["W"] = Egrid
     end
     return name
