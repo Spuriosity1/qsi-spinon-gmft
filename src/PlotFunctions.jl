@@ -35,7 +35,9 @@ function sim_identifier(sim::SimulationParameters)
 end
     
 function save_SQW(output_dir::String;
-        S::Matrix{ComplexF64},
+        Spm::Matrix{ComplexF64},
+        Spp::Matrix{ComplexF64},
+        Smagnetic::Matrix{Float64},
         bounds::Matrix{Float64},
         Egrid::Vector{Float64},
         BZ_path::BZPath,
@@ -43,7 +45,7 @@ function save_SQW(output_dir::String;
         ip::IntegrationParameters,
         prefix="SQW")
 
-    name = output_dir*"/"*prefix*sim_identifier(sim)
+    name = output_dir*"/"*prefix*sim_identifier(sim)*".jld"
     rm(name, force=true)
     jldopen(name, "w") do file
         g1 = create_group(file, "integration_parameters")
@@ -60,7 +62,9 @@ function save_SQW(output_dir::String;
         g["L"]=sim.lat.L
 
         d = create_group(file, "intensity") 
-        d["S"] = S
+        d["Spm"] = Spm
+        d["Spp"] = Spp
+        d["Smagnetic"] = Smagnetic
         d["bounds"] = bounds
         # a list of K points, such that the I'th S slics corresponds to the I'th K point
         d["Q_list"] = BZ_path.K 
@@ -81,7 +85,8 @@ Plots integrated spectral weight over the whole Brillouin zone
 """
 function integrated_specweight(sim::SimulationParameters, 
 						 integral_params::IntegrationParameters,
-        Egrid::Vector{Float64}
+        Egrid::Vector{Float64},
+        gtensor::Matrix{Float64}
 						 )
     Sω = zeros(ComplexF64,size(Egrid))
 
@@ -109,23 +114,28 @@ end
 ###########
 # expensive calculations
 """
-calc_spectral_weight(sim::SimulationParameters,
+calc_spectral_weight_along_path(sim::SimulationParameters,
     ip::IntegrationParameters, Egrid::Vector{Float64}, path::BZPath)
 
     @param sim the simulation parameters
     @param ip the numerical constants, passed directly to spectral_weight
     @param Egrid the grid for energy values
     @param path the path through the Brillouin zone
+    @param g_tensor the matrix such that, with respect to local axes, m = g S
 
     Saves the results to
 """
 function calc_spectral_weight_along_path(sim::SimulationParameters,
     ip::IntegrationParameters, Egrid::Vector{Float64}, path::BZPath,
-    output_dir::String)
+        gtensor::Matrix{Float64},
+output_dir::String
+    )
     
     num_K = length(path.K)
     
-    S = zeros(ComplexF64, num_K, length(Egrid))
+    Spm = zeros(ComplexF64, num_K, length(Egrid))
+    Spp = zeros(ComplexF64, num_K, length(Egrid))
+    Smagnetic = zeros(Float64, num_K, length(Egrid))
     bounds = zeros(Float64, num_K, 2)
     
     p = Progress(num_K)
@@ -133,14 +143,22 @@ function calc_spectral_weight_along_path(sim::SimulationParameters,
     Threads.@threads for I = 1:num_K
         k = path.K[I]*0.5
         q = SVector(k[1], k[2], k[3])
-        S[I, :], bounds[I,:] = spectral_weight(q, Egrid, sim, ip)
+        # hard-coded DO g-tensor
+        Spm[I, :], Spp[I, :], Smagnetic[I, :], bounds[I,:] = begin
+            spectral_weight(q, Egrid, sim, ip, gtensor ) 
+        end
         next!(p)
     end
     
     finish!(p)
 
     # save the data
-    return save_SQW(output_dir, S=S, bounds=bounds, BZ_path=path,
+    return save_SQW(output_dir, 
+        Spm=Spm,
+        Spp=Spp,
+        Smagnetic=Smagnetic, 
+        bounds=bounds,
+        BZ_path=path,
         Egrid=collect(Egrid), sim=sim, ip=ip)
 end
 
@@ -197,13 +215,16 @@ function plot_spinons(sim::SimulationParameters, path::BZPath)
 end
 
 
+
+
 """ 
 Plots the spectral weight (either the S+S- correlation, or something else)
 stored in the simulation stored at the specified path.
 """
-function plot_spectral_weight(data::Dict)
+function plot_spectral_weight(data::Dict, which="Spm")
     d = data["intensity"]
-    p = heatmap(d["tau"],d["W"],real.(d["S"])')
+
+    p = heatmap(d["tau"],d["W"],real.(d[which])')
     plot!(d["tau"], d["bounds"], linecolor=:white)
     xticks!(d["ticks_tau"],d["ticks_label"])
     plot!(legend=nothing)

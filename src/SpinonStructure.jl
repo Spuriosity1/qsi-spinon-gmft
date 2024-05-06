@@ -139,7 +139,7 @@ $$
         end
 
         # the B sites
-        x0 += [2,2,2]
+        x0 += @SVector [2,2,2]
         J0 += length(lat.A_sites)
         # @assert J0 == tetra_idx(lat, x0) 
         for mu = 1:4
@@ -293,9 +293,9 @@ of the hopping matrix.
 """
 function spinon_dispersion(k::Union{Vec3_F64,Vector{Float64}}, sim::SimulationParameters)
     ϵ, U = diagonalise_M(k, sim.A, sim.Jpm, sim.B)
-    if minimum(ϵ.+ sim.λ ) < 0
-        println("gap closing found near k = $(k)")
-    end
+    # if minimum(ϵ.+ sim.λ ) < 0
+    #     println("gap closing found near k = $(k)")
+    # end
     return sqrt.(2*(ϵ.+ sim.λ )), U
 end
 
@@ -330,48 +330,196 @@ end
 end
 
 
+#=
 """
-	specweight_at(q, Δ, sim)
+	corr_Spm_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
 	-> E, S
 
 Calculates the contribution of kspace points(q ± Δ) to the Δ integral in 
-`spectral_weight`. Let there be N tetrahedra in `sim`, i.e. N bands.
+`corr_Spm`, meaning <S+ S->. Let there be N tetrahedra in `sim`, i.e. N bands.
 Returns: 
 `E`, an (N, N) matrix of e1 + e2 energies corresponding to Dirac delta peaks
 `S`, an (N, N) matrix of spectral weights giving the heights of these peaks
 """
-function specweight_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
-    S = 0
-    
-    E1, U1 = spinon_dispersion( p, sim )
-    E2, U2 = spinon_dispersion( q-p, sim )
+function _corr_Spm_at(
+	E1::Float64, U1::Matrix{ComplexF64},
+	E2::Float64, U2::Matrix{ComplexF64},
+	q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
+  
+    #E1, U1 = spinon_dispersion( p, sim )
+    #E2, U2 = spinon_dispersion( q-p, sim )
 
     W = zeros(ComplexF64,4,4)
-    
+  
     for μ=1:4, ν=1:4
         W[μ,ν] = exp(2im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
     end
-    
+  
 
     local f=length(sim.lat.tetra_sites)
-    S = zeros(f,f)
+    S = zeros(ComplexF64, f,f)
+    for μ=1:4, ν=1:4
+        for (jA, rA) in enumerate(sim.lat.A_sites), (jpA, rpA) in enumerate(sim.lat.A_sites)
+            jB = geom.tetra_idx(sim.lat, rA + 2*geom.pyro[μ])::Int
+            jpB = geom.tetra_idx(sim.lat, rpA + 2*geom.pyro[ν])::Int
+
+            # the "l" bit
+            x1 = U1[jA, :] .* conj(U1[jpA, :]) ./ (2*E1) 
+            # the "l'" bit
+            x2 = conj(U2[jpB, :]) .* U2[jB, :] ./ (2*E2) # <--- calculation says this one
+            # x2 = U2[jB, :] .* conj(U2[jpB, :]) ./ (2*E2) # makes no difference 
+          
+          
+            S += W[μ,ν]*exp(1im*(sim.A[jA,μ]-sim.A[jpA, ν])) * x1*x2'
+        end
+    end
+    E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
+    return E, S
+end
+
+
+
+
+"""
+	_corr_Spp_at(
+	E1::Float64, U1::Matrix{ComplexF64},
+	E2::Float64, U2::Matrix{ComplexF64},
+	q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
+	-> E, S
+
+Calculates the contribution of kspace points(q ± p) to the p integral in 
+`corr_Spp`, < S+ S+ >. Let there be N tetrahedra in `sim`, i.e. N bands.
+Expects E1, U1 = spinon_dispersion( p, sim )
+		E2, U2 = spinon_dispersion( q-p, sim)
+Returns: 
+`E`, an (N, N) matrix of e1 + e2 energies corresponding to Dirac delta peaks
+`S`, an (N, N) matrix of spectral weights giving the heights of these peaks
+"""
+function _corr_Spp_at(
+	E1::Float64, U1::Matrix{ComplexF64},
+	E2::Float64, U2::Matrix{ComplexF64},
+	q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
+  
+    #E1, U1 = spinon_dispersion( p, sim )
+    #E2, U2 = spinon_dispersion( q-p, sim )
+
+    W = zeros(ComplexF64,4,4)
+  
+    for μ=1:4, ν=1:4
+        W[μ,ν] = begin
+            exp(2im*(q/2)'* (geom.pyro[μ]-geom.pyro[ν]))*
+            exp(-2im*(p)'* (geom.pyro[μ]+geom.pyro[ν]))
+        end
+    end
+  
+
+    local f=length(sim.lat.tetra_sites)
+    S = zeros(ComplexF64, f,f)
     for μ=1:4, ν=1:4
         for (jA, rA) in enumerate(sim.lat.A_sites), (jpA, rpA) in enumerate(sim.lat.A_sites)
             jB = geom.tetra_idx(sim.lat, rA + 2*geom.pyro[μ])
             jpB = geom.tetra_idx(sim.lat, rpA + 2*geom.pyro[ν])
 
             # the "l" bit
-            x1 = U1[jA, :] .* conj(U1[jpA, :]) ./ (2*E1) 
+            x1 = U1[jA, :] .* conj(U1[jpB, :]) ./ (2*E1) 
             # the "l'" bit
-            x2 = U2[jpB, :] .* conj(U2[jB, :]) ./ (2*E2) # <--- calculation says this one
-            # x2 = U2[jB, :] .* conj(U2[jpB, :]) ./ (2*E2) # makes no difference 
-            
-            
-            S += W[μ,ν]*exp(1im*(sim.A[jA,μ]-sim.A[jpA, ν])) * x2*x1'
+            x2 = U2[jpA, :] .* conj(U2[jB, :]) ./ (2*E2)
+          
+          
+          
+            S += W[μ,ν]*exp(1im*(sim.A[jA,μ]+sim.A[jpA, ν])) * x1*x2'
         end
     end
     E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
     return E, S
+end
+=#
+
+
+
+"""
+	_corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
+	-> E, Spm, Spp, Smagnetic
+
+Calculates the contribution of kspace points(q ± p) to the p integral in 
+`corr_Spm`, meaning <S+ S->. Let there be N tetrahedra in `sim`, i.e. N bands.
+Returns: 
+`E`, an (N, N) matrix of e1 + e2 energies corresponding to Dirac delta peaks
+`Spm`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S-(-k,0)>
+`Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
+"""
+function _corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
+	g_tensor=nothing)
+  
+    E1, U1 = spinon_dispersion( p, sim )
+    E2, U2 = spinon_dispersion( q-p, sim )
+
+    local W_pm = zeros(ComplexF64,4,4)
+    local W_pp = zeros(ComplexF64,4,4)
+  
+    for μ=1:4, ν=1:4
+        W_pm[μ,ν] = exp(2im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
+
+        W_pp[μ,ν] = begin
+            exp(2im*(q/2)'* (geom.pyro[μ]-geom.pyro[ν]))*
+            exp(-2im*(p)'* (geom.pyro[μ]+geom.pyro[ν]))
+        end		
+    end
+
+	
+	local QQ_tensor = diagm([1.,1.,1.]) - q*q'/(q'*q)	
+
+    local f=length(sim.lat.tetra_sites)
+    local S_pm = zeros(ComplexF64, f,f)
+    local S_pp = zeros(ComplexF64, f,f)
+    local S_magnetic = zeros(Float64, f,f)
+
+    for μ=1:4, ν=1:4
+        for (jA, rA) in enumerate(sim.lat.A_sites), (jpA, rpA) in enumerate(sim.lat.A_sites)
+            jB = geom.tetra_idx(sim.lat, rA + 2*geom.pyro[μ])::Int
+            jpB = geom.tetra_idx(sim.lat, rpA + 2*geom.pyro[ν])::Int
+
+			# <S+ S->
+            # the "l" bit
+            x1 = U1[jA, :] .* conj(U1[jpA, :]) ./ (2*E1) 
+            # the "l'" bit
+            x2 = conj(U2[jpB, :]) .* U2[jB, :] ./ (2*E2) 
+                    
+            delta_S_pm = W_pm[μ,ν]*exp(1im*(sim.A[jA,μ]-sim.A[jpA, ν])) * x1*x2'
+			S_pm += delta_S_pm
+			
+			# <S+ S+>
+            # the "l" bit
+            x3 = U1[jA, :] .* conj(U1[jpB, :]) ./ (2*E1) 
+            # the "l'" bit
+            x4 = U2[jpA, :] .* conj(U2[jB, :]) ./ (2*E2)
+
+            delta_S_pp = W_pp[μ,ν]*exp(1im*(sim.A[jA,μ]+sim.A[jpA, ν])) * x3*x4'
+			S_pp += delta_S_pp
+
+
+			if g_tensor != nothing
+
+				delta_S_xx =  0.5*real.(delta_S_pp .+ delta_S_pm)
+				delta_S_xy =  0.5*imag.(delta_S_pp .- delta_S_pm)
+				delta_S_yx =  0.5*imag.(delta_S_pp .+ delta_S_pm)
+				delta_S_yy = -0.5*real.(delta_S_pp .- delta_S_pm)
+
+				R1 = g_tensor * geom.axis[μ]
+				R2 = g_tensor * geom.axis[ν]
+
+				S_magnetic +=  R1[:,1]' * QQ_tensor * R2[:,1] .* delta_S_xx
+				S_magnetic +=  R1[:,1]' * QQ_tensor * R2[:,2] .* delta_S_xy
+				S_magnetic +=  R1[:,2]' * QQ_tensor * R2[:,1] .* delta_S_yx
+				S_magnetic +=  R1[:,2]' * QQ_tensor * R2[:,2] .* delta_S_yy
+	
+
+			end
+			
+        end
+    end
+    local E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
+    return E, S_pm, S_pp, S_magnetic
 end
 
 
@@ -381,41 +529,74 @@ integral_params::IntegrationParameters)
 
 Calculates the spectral weight at point `q`.
 
-This performs a Monte Carlo integral of the spin-spin correlator <S+Sz+> over
-the Brillouin zone.
+This performs a Monte Carlo integral of the spin-spin correlators <S+S-> and 
+<S+ S+> over the Brillouin zone.
 
 	@param Egrid the energy dgrids to integrate over 
 	@param sim the physical parameters of the problem 
 	@param integral_params the detials for doing the integration
 
-	@return Sqω, bounds the spectral weight and a two-element vector
-		[min,max] voinding the spectral weight
+	@return Sqω_pm The correlator <S^+(q,w) S^-(-q,0)>
+	@return Sqω_pp The correlator <S^+(q,w) S^+(-q,0)>
+	@return bound, a two-element vector [min,max] bounding the spectral weight
 
 """
 function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
-	sim::SimulationParameters, integral_params::IntegrationParameters)
+	sim::SimulationParameters, integral_params::IntegrationParameters,
+	g_tensor=nothing)
+
 
     # cursed Monte Carlo integration
-    Sqω = zeros(ComplexF64,size(Egrid))
-    # perform an MC integral
-    # dE = (Egrid[2]-Egrid[1])*broaden_factor
 
     bounds = [Inf, -Inf]
+
+	# puts Lorentzians of weights Snm at energies Enm
+	function broadened_peaks!(
+		Sqω::Union{Vector{ComplexF64}, Vector{Float64}},
+		Snm::Union{Matrix{ComplexF64}, Matrix{Float64}},
+		Enm::Matrix{Float64})
+
+		for (E,S) in zip(Enm,Snm)
+			for (i,e) in enumerate(Egrid)
+				Sqω[i] += S*Lorentzian(e-E, integral_params.broadening_dE)
+			end
+		end
+	end
+
+	Sqω_pm       = similar(Egrid, ComplexF64)
+	Sqω_pp       = similar(Egrid, ComplexF64)
+	Sqω_magnetic = similar(Egrid, Float64)
+
+	Sqω_pm       .= 0 
+	Sqω_pp       .= 0 
+	Sqω_magnetic .= 0 
     
-    for _ = 1:integral_params.n_K_samples
-        
+    for _ = 1:integral_params.n_K_samples 
         p = (1 .- 2 .*(@SVector rand(3)))*8π/8         
 		#overkill but definitely not too small
-		#
-        Enm, Snm = specweight_at(q, p, sim)
-        Sqω += map(
-            e-> sum( [S*Lorentzian(e - E, integral_params.broadening_dE) for (E,S) in zip(Enm,Snm)]),
-                Egrid)
-        bounds[1] = min(bounds[1], reduce(min,  Enm) ) 
-        bounds[2] = max(bounds[2], reduce(max,  Enm) )
+		
+		# notation: 
+		# _pm -> ^{+-}
+		# _pp -> ^{++}
+		# _rs denotes spinon-site indices
+		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = _corr_at(q, p, sim, g_tensor)
+		# TODO consider doing this in place
+
+		broadened_peaks!(Sqω_pm,  S_pm_rs, E_rs )
+		broadened_peaks!(Sqω_pp,  S_pp_rs, E_rs )
+
+		if g_tensor != nothing
+			broadened_peaks!(Sqω_magnetic, S_magnetic_rs, E_rs )
+		end	
+         
+        bounds[1] = min(bounds[1], reduce(min,  E_rs) ) 
+        bounds[2] = max(bounds[2], reduce(max,  E_rs) )
     end
-    return Sqω, bounds
+    return Sqω_pm, Sqω_pp, Sqω_magnetic, bounds
 end
+
+
+
 
 
 
