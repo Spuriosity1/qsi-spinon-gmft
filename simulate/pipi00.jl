@@ -17,8 +17,9 @@ println("Calculating chemical potentials")
 
 simlist = []
 @showprogress for b in magnetic_fields
+    s = SimulationParameters("pipi00", A=A_ππ00, Jpm=Jpm, B=b, nsample=100000, kappa=2.0)
     push!(simlist,
-        SimulationParameters("pipi00", A=A_ππ00, Jpm=Jpm, B=b, nsample=100000, kappa=2.0)
+          SimulationParameters(s,0.001) # an ugly hack
         )
 end
 
