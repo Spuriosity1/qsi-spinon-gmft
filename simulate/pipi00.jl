@@ -15,18 +15,21 @@ magnetic_fields = [B0*[1,1,0]/sqrt(2)  for B0 in (Bmin, Bmin+0.1, Bmin+0.2,Bmin+
 
 println("Calculating chemical potentials...")
 
-simlist = []
+simlist_x = []
 @showprogress for b in magnetic_fields
-    push!(simlist,
-        SimulationParameters("pipi00", A=A_ππ00, Jpm=Jpm, B=b, nsample=100000, kappa=2.0)
+    push!(simlist_x,
+        SimulationParameters("pipi00-kludge", A=A_ππ00, Jpm=Jpm, B=b, nsample=10000, kappa=2.0)
         )
 end
 
+simlist = [SimulationParameters(s, 1e-3) for s in simlist_x]
+
+
 ip = integration_settings["very_slow"]
 
-Egrid = collect(range(0,3,150))
+Egrid = collect(range(0,1.4,150))
 
-G = [0. 0. 0.;
+G = @SMatrix [0. 0. 0.;
 	 0. 0. 0.;
 	 1. 0. 0.]
 
@@ -35,16 +38,16 @@ data_dir = "output/"
 
 
 
-path = generate_path(geom.high_symmetry_points, 
-    split("\\Gamma X W K \\Gamma L U W"), points_per_unit=60, K_units=4π/8)
+path_spinons = generate_path(geom.high_symmetry_points, 
+    split("\\Gamma X W K \\Gamma L U W"), points_per_unit=60, K_units=2π/8)
 
 println("Plotting spinon dispersions...")
 # plot the spinons
 @showprogress for sim in simlist
-    p = plot_spinons(sim,path)
+	d = calc_spinons_along_path(data_dir, sim=sim, path=path_spinons)
+	p = plot_spinons(load(d))
     savefig(p, figure_dir*"spinon_dispersion"*sim_identifier(sim)*".pdf")
 end
-
 
 path = generate_path(geom.high_symmetry_points, 
     split("\\Gamma X W K \\Gamma L U W"), points_per_unit=30, K_units=4π/8)
@@ -52,9 +55,14 @@ path = generate_path(geom.high_symmetry_points,
 println("Calculating spectral weight data...")
 datafiles = []
 # run the simulation
+
 for (j,sim) in enumerate(simlist)
     @printf("Running simulation %d of %d\n", j, length(simlist))
-    f = calc_spectral_weight_along_path(sim, ip, Egrid, path, G, data_dir)
+    f = calc_spectral_weight_along_path(data_dir, 
+    sim=sim,
+    ip=ip, 
+    Egrid=Egrid, path=path, gtensor=G)
+    # f = data_dir*"/SQW"*sim_identifier(sim)*".jld"
     push!(datafiles, f)
     println("Saving data to ",f)
 end
@@ -70,6 +78,7 @@ for specweight_data in datafiles
 
     p = plot_spectral_weight(data,"Spp")
     savefig(p, figure_dir*"corr_S++"*sim_identifier(sim)*".pdf")
+
 
     p = plot_spectral_weight(data,"Smagnetic")
     savefig(p, figure_dir*"corr_Smagnetic"*sim_identifier(sim)*".pdf")

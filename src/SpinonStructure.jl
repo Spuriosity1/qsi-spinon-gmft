@@ -8,8 +8,10 @@ import CSV
 using StaticArrays
 using LinearAlgebra
 using Roots
+using Optim
+using ProgressMeter
 
-export load_A, calc_fluxes, SimulationParameters, spinon_dispersion, IntegrationParameters, geom, spectral_weight
+export load_A, calc_fluxes, SimulationParameters, spinon_dispersion, IntegrationParameters, geom, spectral_weight, integrated_specweight
 
 # The thread switching this does is not desirable at all
 LinearAlgebra.BLAS.set_num_threads(1)
@@ -90,8 +92,8 @@ $$
     
     @assert size(A)[1] == length(lat.A_sites)
     # the nearst neighbour (magnetic) hoppings
-    for (J0, x0) in enumerate(lat.A_sites)
-        for mu = 1:4
+    @inbounds for (J0, x0) in enumerate(lat.A_sites)
+        @inbounds for mu = 1:4
             x1 = x0 + 2*geom.pyro[mu]
             J1 = geom.tetra_idx(lat, x1)
 
@@ -124,11 +126,11 @@ $$
     H = zeros(ComplexF64, length(lat.tetra_sites), length(lat.tetra_sites))
     for (J0, x0) in enumerate(lat.A_sites)
         # the A sites
-        for mu = 1:4
+        @inbounds for mu = 1:4
             x1 = x0 + 2*geom.pyro[mu]
             J1 = geom.tetra_idx(lat, x1)
                 
-            for nu = (mu+1):4
+            @inbounds for nu = (mu+1):4
                 x2 = x0 + 2*geom.pyro[nu]
                 J2 = geom.tetra_idx(lat, x2)
 
@@ -142,11 +144,11 @@ $$
         x0 += @SVector [2,2,2]
         J0 += length(lat.A_sites)
         # @assert J0 == tetra_idx(lat, x0) 
-        for mu = 1:4
+        @inbounds for mu = 1:4
             x1 = x0 - 2*geom.pyro[mu]
             J1 = geom.tetra_idx(lat, x1)
                 
-            for nu = mu+1:4
+            @inbounds for nu = mu+1:4
                 x2 = x0 - 2*geom.pyro[nu]
                 J2 = geom.tetra_idx(lat, x2)
                 z= 1/4*exp(1.0im*(-A[J1,mu] + A[J2,nu]) - 1.0im*K'*(x1-x2))
@@ -244,9 +246,28 @@ function calc_lambda(A::Matrix{Float64}, Jpm::Float64,
     return calc_lambda(k -> diagonalise_M(k, A, Jpm, B), nsample, kappa)
 end
 
+
+function min_lambda(A::Matrix{Float64}, Jpm::Float64, 
+	B::Union{Vec3_F64, Vector{Float64}})
+    f = k -> minimum(SpinonStructure.diagonalise_M(k, A, Jpm, B)[1])
+	lower = -π/4 .*ones(3)
+	upper =  π/4 .*ones(3)
+    inner_optimizer = GradientDescent()
+
+    m = Inf
+    res = nothing
+    for i=1:1000
+        r = optimize(f, lower, upper, rand(3)*π/2 .- π/4, Fminbox(inner_optimizer))
+        if r.g_converged
+            m = min(r.minimum, m)
+            res = r
+        end
+    end
+    return res
+end
+
 """
     SimulationParameters
-
 Members:
     A::Matrix{Float64}
     Jpm::Float64
@@ -273,6 +294,11 @@ struct SimulationParameters
         L = round(Int, (size(A)[1]/4)^(1/3))
         new(A, Jpm, B, calc_lambda(A, Jpm, B, nsample, kappa), geom.PyroFCC(L), name )
     end
+
+	function SimulationParameters(name, λ::Float64; A, Jpm, B)
+        L = round(Int, (size(A)[1]/4)^(1/3))
+		new(A, Jpm, B, λ, geom.PyroFCC(L), name )
+	end
       
     function SimulationParameters(x::Dict{String, Any})
         new(x["fluxes"], x["Jpm"], x["B"], x["lambda"], geom.PyroFCC(x["L"]),x["name"])
@@ -306,7 +332,7 @@ end
 
 n_K_samples - number of points to use for the MC integration
 BZ_grid_density - effective length of the system
-broadening_DE - lifetime broadening parameter for the Lorentzians
+broadening_dE - lifetime broadening parameter for the Lorentzians
 """
 @kwdef struct IntegrationParameters
     n_K_samples::Int
@@ -449,7 +475,7 @@ Returns:
 `Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
 """
 function _corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
-	g_tensor=nothing)
+	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
     E1, U1 = spinon_dispersion( p, sim )
     E2, U2 = spinon_dispersion( q-p, sim )
@@ -457,7 +483,7 @@ function _corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
     local W_pm = zeros(ComplexF64,4,4)
     local W_pp = zeros(ComplexF64,4,4)
   
-    for μ=1:4, ν=1:4
+    @inbounds for μ=1:4, ν=1:4
         W_pm[μ,ν] = exp(2im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
 
         W_pp[μ,ν] = begin
@@ -474,7 +500,7 @@ function _corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
     local S_pp = zeros(ComplexF64, f,f)
     local S_magnetic = zeros(Float64, f,f)
 
-    for μ=1:4, ν=1:4
+    @inbounds for μ=1:4, ν=1:4
         for (jA, rA) in enumerate(sim.lat.A_sites), (jpA, rpA) in enumerate(sim.lat.A_sites)
             jB = geom.tetra_idx(sim.lat, rA + 2*geom.pyro[μ])::Int
             jpB = geom.tetra_idx(sim.lat, rpA + 2*geom.pyro[ν])::Int
@@ -523,6 +549,27 @@ function _corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
 end
 
 
+
+# puts Lorentzians of weights Snm at energies Enm
+function broadened_peaks!(
+	Sqω::Union{Vector{ComplexF64}, Vector{Float64}},
+	Snm::Union{Matrix{ComplexF64}, Matrix{Float64}},
+	Enm::Matrix{Float64},
+	Egrid::Vector{Float64},
+	dE::Float64
+	)
+
+	for (E,S) in zip(Enm,Snm)
+		for (i,e) in enumerate(Egrid)
+			Sqω[i] += S*Lorentzian(e-E, dE)
+		end
+	end
+end
+
+
+
+
+
 """
 spectral_weight(q, Egrid, sim::SimulationParameters,
 integral_params::IntegrationParameters)
@@ -543,25 +590,14 @@ This performs a Monte Carlo integral of the spin-spin correlators <S+S-> and
 """
 function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
 	sim::SimulationParameters, integral_params::IntegrationParameters,
-	g_tensor=nothing)
+	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
+
+
 
 
     # cursed Monte Carlo integration
 
     bounds = [Inf, -Inf]
-
-	# puts Lorentzians of weights Snm at energies Enm
-	function broadened_peaks!(
-		Sqω::Union{Vector{ComplexF64}, Vector{Float64}},
-		Snm::Union{Matrix{ComplexF64}, Matrix{Float64}},
-		Enm::Matrix{Float64})
-
-		for (E,S) in zip(Enm,Snm)
-			for (i,e) in enumerate(Egrid)
-				Sqω[i] += S*Lorentzian(e-E, integral_params.broadening_dE)
-			end
-		end
-	end
 
 	Sqω_pm       = similar(Egrid, ComplexF64)
 	Sqω_pp       = similar(Egrid, ComplexF64)
@@ -582,11 +618,14 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
 		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = _corr_at(q, p, sim, g_tensor)
 		# TODO consider doing this in place
 
-		broadened_peaks!(Sqω_pm,  S_pm_rs, E_rs )
-		broadened_peaks!(Sqω_pp,  S_pp_rs, E_rs )
+		broadened_peaks!(Sqω_pm,  S_pm_rs, E_rs, Egrid, integral_params.broadening_dE )
+		broadened_peaks!(Sqω_pp,  S_pp_rs, E_rs, Egrid, integral_params.broadening_dE )
+
 
 		if g_tensor != nothing
-			broadened_peaks!(Sqω_magnetic, S_magnetic_rs, E_rs )
+			broadened_peaks!(Sqω_magnetic, S_magnetic_rs, E_rs, Egrid, 
+			integral_params.broadening_dE )
+
 		end	
          
         bounds[1] = min(bounds[1], reduce(min,  E_rs) ) 
@@ -595,6 +634,40 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
     return Sqω_pm, Sqω_pp, Sqω_magnetic, bounds
 end
 
+
+
+"""
+Computes integrated spectral weight over the whole Brillouin zone
+"""
+function integrated_specweight(sim::SimulationParameters, 
+						 integral_params::IntegrationParameters,
+        Egrid::Vector{Float64},
+        g_tensor::SMatrix{3,3,Float64}
+						 )
+    Sω_pm = zeros(ComplexF64,size(Egrid))
+    Sω_pp = zeros(ComplexF64,size(Egrid))
+    Sω_magnetic = zeros(Float64,size(Egrid))
+
+    pr = Progress(integral_params.n_K_samples)
+    @Threads.threads for _ = 1:integral_params.n_K_samples  
+        q = (1 .- 2 .*(@SVector rand(3)))*4π/8
+        p = (1 .- 2 .*(@SVector rand(3)))*4π/8
+
+		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = _corr_at(q, p, sim, g_tensor)
+
+		broadened_peaks!(Sω_pm, S_pm_rs, E_rs, Egrid, integral_params.broadening_dE )
+		broadened_peaks!(Sω_pp, S_pp_rs, E_rs, Egrid, integral_params.broadening_dE )
+
+		broadened_peaks!(Sω_magnetic, S_magnetic_rs, E_rs, Egrid,
+			integral_params.broadening_dE )
+
+
+        next!(pr)
+    end
+    finish!(pr)
+
+    return Sω_pm, Sω_pp, Sω_magnetic
+end
 
 
 

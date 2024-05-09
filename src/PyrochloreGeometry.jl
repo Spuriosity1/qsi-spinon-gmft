@@ -5,6 +5,10 @@ using StaticArrays
 const Vec3 = SVector{3,Int64};
 const Vec3_F64 = SVector{3, Float64};
 
+
+const MVec3 = MVector{3,Int64};
+const MVec3_F64 = MVector{3, Float64};
+
 pyro = map(x->SVector{3,Int}(x), [
      [ 1,  1,  1],
      [ 1, -1, -1],
@@ -104,13 +108,57 @@ struct PyroFCC
     end
 end
 
+"""
+tetra_idx(lattice::PyroFCC, tetra_pos_::Vec3)
+
+Returns the index of site tetra_pos_ in lattice.tetra_sites.
+"""
+function tetra_idx(lattice::PyroFCC, tetra_pos::SVector{3,Int64})
+    # unsafe, but fast, variant for performance-critical parts
+    
+    diamond_sl =  (tetra_pos[1] & 0x2) >> 1
+    #  !!! 0-based index
+    
+    # if this bit is set, there is a "+2" or "+6" somewhere. 
+    # therefore it is SL 2
+    # tetra_pos_ -= diamond[diamond_sl]
+
+    L = lattice.L
+
+    # arcane bit math nonsense
+    # Relies on the specific form of fcc_Dy. In 0-based, fcc_Dy is
+    # 0=> [0,0,0]
+    # 1=> [0,4,4]
+    # 2=> [4,0,4]
+    # 3=> [4,4,0]
+    # The first two indices can then be read as bit representations of the index.
+    # Since the sum is of the form N*8 + fcc_Dy + [either 2 or 0], 
+    # the 0x4 bits of the first two dimensions uniquely identify the sublattice.
+    fcc_sl = ( (tetra_pos[2]&0x4) >> 2) | ( (tetra_pos[1]&0x4) >> 1)
+
+    # read off the cell
+    I = mod.(div.(tetra_pos, 8), L)
+    
+    
+    idx =  (
+        (
+            (
+                diamond_sl*L + I[1]
+            )*L + I[2]
+        )*L + I[3]
+    )*4 + fcc_sl + 1
+
+    @assert all(mod.(lattice.tetra_sites[idx] - tetra_pos, 8L) .==0)
+    return idx
+end
+
+# old implementation
+#=
 function tetra_idx(lattice::PyroFCC, tetra_pos_::Vec3)
-    
-    # decide the FCC sl
-    
     L = lattice.L
    
     tmp = MVector{3, Int64}(tetra_pos_)
+    tmp2 = MVector{3, Int64}(tetra_pos_)
 
     #decide the plquette sublattice
 
@@ -136,9 +184,15 @@ function tetra_idx(lattice::PyroFCC, tetra_pos_::Vec3)
     I = mod.(div.(tmp,8),L)
 
     idx =  (diamond_sl-1) * L^3*4 + I[1]*L^2*4 + I[2]*L*4 + I[3]*4 + fcc_sl
+    # make sure we did a good job
+    @assert lat.tetra_sites[idx] == tetra_pos_
    
     return idx
 end
+=#
+
+
+
 
 @inline function spin_sl(lattice::PyroFCC, spin_pos_::Vec3)
     

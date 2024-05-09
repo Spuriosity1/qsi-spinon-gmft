@@ -21,9 +21,7 @@ ip = integration_settings["fast"]
 
 Egrid = collect(range(0,1.4,150))
 
-G = [0. 0. 0.;
-	 0. 0. 0.;
-	 1. 0. 0.]
+G = @SMatrix [0. 0. 0.; 0. 0. 0.; 1. 0. 0.]
 
 
 figure_dir = "figures/"
@@ -45,7 +43,8 @@ datafiles = []
 # run the simulation
 for (j,sim) in enumerate(simlist)
     @printf("Running simulation %d of %d\n", j, length(simlist))
-    f = calc_spectral_weight_along_path(sim, ip, Egrid, path, G, data_dir)
+    f = calc_spectral_weight_along_path(data_dir, 
+        sim=sim, ip=ip, Egrid=Egrid, path=path, gtensor=G)
     push!(datafiles, f)
     println("Saving data to ",f)
 end
