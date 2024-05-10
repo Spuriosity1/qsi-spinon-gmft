@@ -49,7 +49,7 @@ datafiles = []
 
 
 # k-resolved simulation
-#=
+
 for (j,sim) in enumerate(simlist)
     @printf("Running specweight simulation %d of %d\n", j, length(simlist))
     f = calc_spectral_weight_along_path(data_dir, 
@@ -60,7 +60,7 @@ for (j,sim) in enumerate(simlist)
     push!(datafiles, f)
     println("Saving data to ",f)
 end
-=#
+
 
 println("Plotting the spectral weights")
 for specweight_data in datafiles

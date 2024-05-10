@@ -37,9 +37,11 @@ figure_dir = "figures/"
 data_dir = "output/"
 
 
-
 path_spinons = generate_path(geom.high_symmetry_points, 
     split("\\Gamma X W K \\Gamma L U W"), points_per_unit=60, K_units=2π/8)
+
+path = generate_path(geom.high_symmetry_points, 
+    split("\\Gamma X W K \\Gamma L U W"), points_per_unit=30, K_units=4π/8)
 
 println("Plotting spinon dispersions...")
 # plot the spinons
@@ -49,23 +51,24 @@ println("Plotting spinon dispersions...")
     savefig(p, figure_dir*"spinon_dispersion"*sim_identifier(sim)*".pdf")
 end
 
-path = generate_path(geom.high_symmetry_points, 
-    split("\\Gamma X W K \\Gamma L U W"), points_per_unit=30, K_units=4π/8)
 
 println("Calculating spectral weight data...")
 datafiles = []
-# run the simulation
+
+
+# k-resolved simulation
 
 for (j,sim) in enumerate(simlist)
-    @printf("Running simulation %d of %d\n", j, length(simlist))
+    @printf("Running specweight simulation %d of %d\n", j, length(simlist))
     f = calc_spectral_weight_along_path(data_dir, 
     sim=sim,
     ip=ip, 
-    Egrid=Egrid, path=path, gtensor=G)
+    Egrid=Egrid, path=path, g_tensor=G)
     # f = data_dir*"/SQW"*sim_identifier(sim)*".jld"
     push!(datafiles, f)
     println("Saving data to ",f)
 end
+
 
 println("Plotting the spectral weights")
 for specweight_data in datafiles
@@ -84,3 +87,14 @@ for specweight_data in datafiles
     savefig(p, figure_dir*"corr_Smagnetic"*sim_identifier(sim)*".pdf")
 end
 
+# BZ integrated
+for (j,sim) in enumerate(simlist)
+    @printf("Running powder simulation %d of %d\n", j, length(simlist))
+    f = calc_integrated_specweight(data_dir, 
+    sim=sim,
+    ip=ip, 
+    Egrid=Egrid, g_tensor=G)
+    # f = data_dir*"/SQW"*sim_identifier(sim)*".jld"
+    push!(datafiles, f)
+    println("Saving data to ",f)
+end
