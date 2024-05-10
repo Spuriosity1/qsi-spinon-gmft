@@ -11,7 +11,7 @@ using Roots
 using Optim
 using ProgressMeter
 
-export load_A, calc_fluxes, SimulationParameters, spinon_dispersion, IntegrationParameters, geom, spectral_weight, integrated_specweight
+export load_A, calc_fluxes, SimulationParameters, spinon_dispersion, IntegrationParameters, geom, spectral_weight, integrated_specweight, corr_at, broadened_peaks
 
 # The thread switching this does is not desirable at all
 LinearAlgebra.BLAS.set_num_threads(1)
@@ -464,7 +464,7 @@ end
 
 
 """
-	_corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
+	corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
 	-> E, Spm, Spp, Smagnetic
 
 Calculates the contribution of kspace points(q ± p) to the p integral in 
@@ -474,7 +474,7 @@ Returns:
 `Spm`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S-(-k,0)>
 `Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
 """
-function _corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
+function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
     E1, U1 = spinon_dispersion( p, sim )
@@ -567,6 +567,19 @@ function broadened_peaks!(
 end
 
 
+# puts Lorentzians of weights Snm at energies Enm
+# non-mutating version
+function broadened_peaks(
+	Snm::Union{Matrix{ComplexF64}, Matrix{Float64}},
+	Enm::Matrix{Float64},
+	Egrid::Vector{Float64},
+	dE::Float64
+	)
+	return reduce( +, [
+	[S*Lorentzian(e-E, dE) for e in Egrid]
+		for (E,S) in zip(Enm,Snm)
+		])		
+end
 
 
 
@@ -615,7 +628,7 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
 		# _pm -> ^{+-}
 		# _pp -> ^{++}
 		# _rs denotes spinon-site indices
-		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = _corr_at(q, p, sim, g_tensor)
+		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
 		# TODO consider doing this in place
 
 		broadened_peaks!(Sqω_pm,  S_pm_rs, E_rs, Egrid, integral_params.broadening_dE )
@@ -635,7 +648,7 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
 end
 
 
-
+#=
 """
 Computes integrated spectral weight over the whole Brillouin zone
 """
@@ -653,7 +666,7 @@ function integrated_specweight(sim::SimulationParameters,
         q = (1 .- 2 .*(@SVector rand(3)))*4π/8
         p = (1 .- 2 .*(@SVector rand(3)))*4π/8
 
-		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = _corr_at(q, p, sim, g_tensor)
+		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
 
 		broadened_peaks!(Sω_pm, S_pm_rs, E_rs, Egrid, integral_params.broadening_dE )
 		broadened_peaks!(Sω_pp, S_pp_rs, E_rs, Egrid, integral_params.broadening_dE )
@@ -668,7 +681,7 @@ function integrated_specweight(sim::SimulationParameters,
 
     return Sω_pm, Sω_pp, Sω_magnetic
 end
-
+=#
 
 
 

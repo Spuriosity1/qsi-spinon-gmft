@@ -1,7 +1,14 @@
-include("SpinonStructure.jl")
-include("BZMath.jl")
-using .BZmath
-using .SpinonStructure
+using Distributed
+
+@everywhere begin
+  # instantiate environment
+  using Pkg 
+  Pkg.activate(joinpath(@__DIR__,"../"))
+  Pkg.instantiate()
+  Pkg.precompile()
+end
+
+@everywhere begin
 using LinearAlgebra
 using StaticArrays
 using ProgressMeter
@@ -11,6 +18,14 @@ using HDF5
 using Printf
 
 
+include("BZMath.jl")
+include("SpinonStructure.jl")
+end
+
+@everywhere begin
+    using .BZmath
+    using .SpinonStructure
+end
 #=
 const kspace_points = Dict(
     "\\Gamma"=> [0.,0.,0.],
@@ -112,6 +127,7 @@ end
 
 
 
+
 ###########
 # expensive calculations
 """
@@ -140,20 +156,19 @@ function calc_spectral_weight_along_path(
     Smagnetic = zeros(Float64, num_K, length(Egrid))
     bounds = zeros(Float64, num_K, 2)
     
-    p = Progress(num_K)
  
-    Threads.@threads for I = 1:num_K
+    res =  @showprogress @distributed (vcat) for I = 1:num_K
         k = path.K[I]*0.5
         q = SVector(k[1], k[2], k[3])
         # hard-coded DO g-tensor
-        Spm[I, :], Spp[I, :], Smagnetic[I, :], bounds[I,:] = begin
-            spectral_weight(q, Egrid, sim, ip, g_tensor ) 
-        end
-        next!(p)
+        (I, spectral_weight(q, Egrid, sim, ip, g_tensor ) )
+    end
+
+    # reorder the data properly
+    for (I, x) in res
+        Spm[I, :], Spp[I, :], Smagnetic[I, :], bounds[I,:] = x
     end
     
-    finish!(p)
-
     # save the data
     return save_SQW(output_dir, 
         Spm=Spm,
@@ -161,7 +176,10 @@ function calc_spectral_weight_along_path(
         Smagnetic=Smagnetic, 
         bounds=bounds,
         BZ_path=path,
-        Egrid=collect(Egrid), sim=sim, ip=ip)
+        Egrid=collect(Egrid),
+        sim=sim, 
+        ip=ip
+        )
 end
 
 
@@ -171,16 +189,33 @@ function calc_integrated_specweight(
     sim::SimulationParameters,
     ip::IntegrationParameters, Egrid::Vector{Float64},g_tensor=nothing)
 
-    Sω_pm, Sω_pp, Sω_magnetic = integrated_specweight(sim, 
-		ip, Egrid, g_tensor
-        )
 
-    
+#=
+    Sω_pm = zeros(ComplexF64,size(Egrid))
+    Sω_pp = zeros(ComplexF64,size(Egrid))
+    Sω_magnetic = zeros(Float64,size(Egrid))
+=#
+    res = @showprogress @distributed (.+) for _ = 1:ip.n_K_samples  
+        q = (1 .- 2 .*(@SVector rand(3)))*4π/8
+        p = (1 .- 2 .*(@SVector rand(3)))*4π/8
+
+		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
+
+		(
+        broadened_peaks(S_pm_rs, E_rs, Egrid, ip.broadening_dE ),
+		broadened_peaks(S_pp_rs, E_rs, Egrid, ip.broadening_dE ),
+        broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
+			ip.broadening_dE )
+            )
+
+
+    end
+ 
     # save the data
     return save_SQW(output_dir, 
-        Spm=Sω_pm,
-        Spp=Sω_pp,
-        Smagnetic=Sω_magnetic,
+        Spm=res[1],
+        Spp=res[2],
+        Smagnetic=res[3],
         bounds=nothing,
         BZ_path=nothing,
         Egrid=collect(Egrid), sim=sim, ip=ip,
@@ -192,11 +227,9 @@ end
 function calc_spinons_along_path(output_dir;
     sim::SimulationParameters,
     path::BZPath)
-    bands = []
-    @showprogress for k in path.K
-        push!(bands, spinon_dispersion(k, sim )[1]')
+    bands = @sync @showprogress @distributed (vcat) for k in path.K
+        spinon_dispersion(k, sim )[1]'
     end
-    bands = reduce(vcat, bands)
 
     return save_spinons(output_dir;
         bands=bands,
@@ -295,3 +328,4 @@ const integration_settings = Dict(
     "slow" =>      IntegrationParameters(n_K_samples=1000, broadening_dE=0.02),
     "very_slow" => IntegrationParameters(n_K_samples=10000,broadening_dE=0.02)
 )
+
