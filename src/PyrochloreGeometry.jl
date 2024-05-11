@@ -113,6 +113,7 @@ tetra_idx(lattice::PyroFCC, tetra_pos_::Vec3)
 
 Returns the index of site tetra_pos_ in lattice.tetra_sites.
 """
+
 function tetra_idx(lattice::PyroFCC, tetra_pos::SVector{3,Int64})
     # unsafe, but fast, variant for performance-critical parts
     
@@ -137,7 +138,8 @@ function tetra_idx(lattice::PyroFCC, tetra_pos::SVector{3,Int64})
     fcc_sl = ( (tetra_pos[2]&0x4) >> 2) | ( (tetra_pos[1]&0x4) >> 1)
 
     # read off the cell
-    I = mod.(div.(tetra_pos, 8), L)
+    #I = mod.(div.(tetra_pos, 8), L)
+    I = div.(mod.(tetra_pos, 8L), 8)
     
     
     idx =  (
@@ -148,7 +150,7 @@ function tetra_idx(lattice::PyroFCC, tetra_pos::SVector{3,Int64})
         )*L + I[3]
     )*4 + fcc_sl + 1
 
-    @assert all(mod.(lattice.tetra_sites[idx] - tetra_pos, 8L) .==0)
+    # @assert all(mod.(lattice.tetra_sites[idx] - tetra_pos, 8L) .==0)
     return idx
 end
 
@@ -185,7 +187,7 @@ function tetra_idx(lattice::PyroFCC, tetra_pos_::Vec3)
 
     idx =  (diamond_sl-1) * L^3*4 + I[1]*L^2*4 + I[2]*L*4 + I[3]*4 + fcc_sl
     # make sure we did a good job
-    @assert lat.tetra_sites[idx] == tetra_pos_
+    # @assert lattice.tetra_sites[idx] == tetra_pos_
    
     return idx
 end

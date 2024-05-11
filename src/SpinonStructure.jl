@@ -170,7 +170,7 @@ end
 diagonalises the hopping matrix M, given by the sum of the 
 nearest-neighbour and second-neighbour hoppings.
 """
-function diagonalise_M(k, A::Matrix{Float64}, Jpm = -1., B = [0.,0.,0.])
+function diagonalise_M(K::Vec3_F64, A::Matrix{Float64}, Jpm = -1., B = [0.,0.,0.])
     #=
     Calculates the spinon hopping matrix and diagonalises it.
     - K is a list of k-space points, e.g. [k1, k2, k3, ... kM]
@@ -182,7 +182,6 @@ function diagonalise_M(k, A::Matrix{Float64}, Jpm = -1., B = [0.,0.,0.])
     - eps, a [M, num_tetra] list of sorted energies
     - U,   a [M, num_tetra, num_tetra] list of eigenvectors such that H[J] @ U[J] =  U[J] @ diag(eps[J])
     =#
-    K = SVector{3,Float64}(k)
 
     Jpm = convert(Float64, Jpm)
     B   = convert(Vec3_F64, B)
