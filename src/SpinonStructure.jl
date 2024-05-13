@@ -10,8 +10,12 @@ using LinearAlgebra
 using Roots
 using Optim
 using ProgressMeter
+using Printf
 
-export load_A, calc_fluxes, SimulationParameters, spinon_dispersion, IntegrationParameters, geom, spectral_weight, integrated_specweight, corr_at, broadened_peaks
+export load_A, calc_fluxes, SimulationParameters, IntegrationParameters
+export geom, spinon_dispersion, spectral_weight, integrated_specweight
+export corr_at, broadened_peaks, sim_identifier
+ 
 
 # The thread switching this does is not desirable at all
 LinearAlgebra.BLAS.set_num_threads(1)
@@ -306,6 +310,16 @@ struct SimulationParameters
     function SimulationParameters(other::SimulationParameters, delta_λ::Float64)
         new(other.A, other.Jpm, other.B, other.λ + delta_λ, geom.PyroFCC(other.lat.L), other.name)
     end
+end
+
+
+
+"""
+A 'hash function' providing an informative filename for simulation data
+"""
+function sim_identifier(sim::SimulationParameters)
+    return @sprintf("?name=%s?J_pm=%.3f?B=[%.3f,%.3f,%.3f]",
+        sim.name,sim.Jpm,sim.B[1],sim.B[2],sim.B[3]) 
 end
 
 """

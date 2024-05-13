@@ -1,5 +1,5 @@
-
 include("../src/PlotFunctions.jl")
+include("../src/SimFunctions.jl")
 
 function run_sim(;data_dir, figure_dir,
 	sim::SimulationParameters,
