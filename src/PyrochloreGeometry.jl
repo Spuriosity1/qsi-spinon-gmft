@@ -84,7 +84,13 @@ axis = map(x->SMatrix{3,3,Float64}(reduce(hcat,x)),[
     [[-1,-1,-2]./S6, [ 1,-1, 0]./S2, [-1,-1, 1]./S3]
     ])
 
-
+"""
+Represents a pyrochlore lattice within cubic FCC superlattice
+@member L the number of cubic cells along one dimension (e.g. L=2 has 2^3*16 =128 sites) 
+@member tetra_sites the tetrahedron locations
+@member A_sites the 'up' tetrahedron locations, corresponds to the first half of tetra_sites
+@member spin_sites the spin locations
+"""
 struct PyroFCC
     L::Int
     tetra_sites::Vector{Vec3}
@@ -113,9 +119,7 @@ tetra_idx(lattice::PyroFCC, tetra_pos_::Vec3)
 
 Returns the index of site tetra_pos_ in lattice.tetra_sites.
 """
-
 function tetra_idx(lattice::PyroFCC, tetra_pos::SVector{3,Int64})
-    # unsafe, but fast, variant for performance-critical parts
     
     diamond_sl =  (tetra_pos[1] & 0x2) >> 1
     #  !!! 0-based index
