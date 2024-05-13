@@ -251,21 +251,24 @@ end
 
 
 function min_lambda(A::Matrix{Float64}, Jpm::Float64, 
-	B::Union{Vec3_F64, Vector{Float64}})
-    f = k -> minimum(SpinonStructure.diagonalise_M(k, A, Jpm, B)[1])
+	B::Union{Vec3_F64, Vector{Float64}}, n_tries=1000)
+    f = k -> minimum(SpinonStructure.diagonalise_M(SVector{3}(k), A, Jpm, B)[1])
 	lower = -π/4 .*ones(3)
 	upper =  π/4 .*ones(3)
     inner_optimizer = GradientDescent()
 
     m = Inf
     res = nothing
-    for i=1:1000
+    prog = Progress(n_tries)
+    @Threads.threads for i=1:n_tries
         r = optimize(f, lower, upper, rand(3)*π/2 .- π/4, Fminbox(inner_optimizer))
         if r.g_converged
             m = min(r.minimum, m)
             res = r
         end
+        next!(prog)
     end
+    finish!(prog)
     return res
 end
 

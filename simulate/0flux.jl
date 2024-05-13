@@ -1,6 +1,5 @@
-using Distributed
 
-include("driver.jl")
+include("driver-headless.jl")
 
 magnetic_fields = [
     [0.,0.,0.], [1,1,1]*0.06/√3, [0,1,1]*0.06/√2 

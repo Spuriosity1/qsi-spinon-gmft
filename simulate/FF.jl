@@ -65,7 +65,7 @@ for (i, sim) in enumerate(simlist)
         data_dir="output/",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["very_fast"],
+        integral_params=integration_settings["fast"],
         k_density_spinon_dispersion=20,
         k_density_specweight=10
         )
