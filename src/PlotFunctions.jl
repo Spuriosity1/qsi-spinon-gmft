@@ -195,20 +195,25 @@ function calc_integrated_specweight(
     Sω_pp = zeros(ComplexF64,size(Egrid))
     Sω_magnetic = zeros(Float64,size(Egrid))
 =#
+
+    errors=[]
+
     res = @showprogress @distributed (.+) for _ = 1:ip.n_K_samples  
         q = (1 .- 2 .*(@SVector rand(3)))*4π/8
         p = (1 .- 2 .*(@SVector rand(3)))*4π/8
 
-		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
-
+        try
+            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
 		(
         broadened_peaks(S_pm_rs, E_rs, Egrid, ip.broadening_dE ),
 		broadened_peaks(S_pp_rs, E_rs, Egrid, ip.broadening_dE ),
         broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
 			ip.broadening_dE )
             )
-
-
+        catch e
+            println("Negative dispersion at q=$(q), p=$(p)")
+            (Egrid*0, Egrid*0, Egrid*0)
+        end
     end
  
     # save the data
@@ -228,7 +233,11 @@ function calc_spinons_along_path(output_dir;
     sim::SimulationParameters,
     path::BZPath)
     bands = @sync @showprogress @distributed (vcat) for k in path.K
-        spinon_dispersion(k, sim )[1]'
+        try
+            spinon_dispersion(k, sim )[1]'
+        catch e
+            NaN*zeros(Float64, length(sim.lat.tetra_sites))'
+        end
     end
 
     return save_spinons(output_dir;

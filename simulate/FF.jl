@@ -3,12 +3,12 @@ using Distributed
 include("driver.jl")
 
 # load the A configuration and verify that the captured flux is self-consistent
-A_FF = load_A("gaugefiles/FF_even_L2_pi2.gauge")
+A_FF = load_A("gaugefiles/FF_even_L2_7pi8.gauge")
 
 L = Int( (length(A_FF)/16)^(1/3) )
 
 lat = geom.PyroFCC(L)
-flux_state=calc_fluxes(A_FF)
+flux_state=calc_fluxes(lat, A_FF)
 
 mean_fluxes = sum.(eachcol(flux_state))/size(flux_state,1)
 
@@ -42,13 +42,12 @@ function FF_111_B(desired_Φ0, Jpm)
 end
 
 
-#Φ0 = 2π/3
+Φ0 = 7π/8
 #
-@assert abs(mean_fluxes[1] - 3π/4) < 0.001
-Φ0 = 3π/4
+@assert abs(mean_fluxes[1] - Φ0) < 0.001
 
-simlist = map(
-    Jpm->SimulationParameters("FF",
+simlist_X = map(
+    Jpm->SimulationParameters("FF-kludge",
         A=A_FF, 
         Jpm=Jpm,
         B=FF_111_B(Φ0, Jpm)* [1.,1.,1.]/sqrt(3),
@@ -57,6 +56,8 @@ simlist = map(
     ),
     [-0.01, -0.02, -0.05, -0.1]
 )
+
+simlist = [ SimulationParameters(s, 1e-4) for s in simlist_X ]
 
 for (i, sim) in enumerate(simlist)
     @printf("Running simulation %d of %d\n", i, length(simlist))

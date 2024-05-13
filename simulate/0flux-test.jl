@@ -6,7 +6,7 @@ magnetic_fields = [
     [0.,0.,0.], [1,1,1]*0.06/√3, [0,1,1]*0.06/√2 
     ]
 
-simlist = map(
+simlist_X = map(
     b->SimulationParameters("TEST_0flux",
     A=zeros(Float64, 4,4),
     Jpm=-0.046,
@@ -16,6 +16,7 @@ simlist = map(
     ),
     magnetic_fields);
 
+simlist = [SimulationParameters(s, 0.) for s in simlist_X]
 
 for (i, sim) in enumerate(simlist)
     @printf("Running simulation %d of %d\n", i, length(simlist))

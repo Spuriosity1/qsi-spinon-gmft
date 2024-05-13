@@ -24,11 +24,11 @@ function run_sim(;data_dir, figure_dir,
 		points_per_unit=k_density_specweight, K_units=4π/8)
 	
 	println("Plotting spinon dispersions...")
-	# compute and plot spinons
+	# compute spinons
 	d = calc_spinons_along_path(data_dir, sim=sim, path=path_spinons)
+	
 	p = plot_spinons(load(d))
 	savefig(p, figure_dir*"spinon_dispersion"*sim_identifier(sim)*".pdf")
-	
 	
 	println("Calculating spectral weight data...")
 	datafiles = []

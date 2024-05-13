@@ -622,6 +622,7 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
 	Sqω_pm       .= 0 
 	Sqω_pp       .= 0 
 	Sqω_magnetic .= 0 
+
     
     for _ = 1:integral_params.n_K_samples 
         p = (1 .- 2 .*(@SVector rand(3)))*8π/8         
@@ -631,21 +632,27 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
 		# _pm -> ^{+-}
 		# _pp -> ^{++}
 		# _rs denotes spinon-site indices
-		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
+        try
+            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
+
+            broadened_peaks!(Sqω_pm,  S_pm_rs, E_rs, Egrid, integral_params.broadening_dE )
+            broadened_peaks!(Sqω_pp,  S_pp_rs, E_rs, Egrid, integral_params.broadening_dE )
+
+
+            if g_tensor != nothing
+                broadened_peaks!(Sqω_magnetic, S_magnetic_rs, E_rs, Egrid, 
+                                 integral_params.broadening_dE )
+
+            end	
+
+            bounds[1] = min(bounds[1], reduce(min,  E_rs) ) 
+            bounds[2] = max(bounds[2], reduce(max,  E_rs) )
+        catch e
+            println("Negative dispersion at q=$(q), p=$(p)")
+            continue
+        end
 		# TODO consider doing this in place
 
-		broadened_peaks!(Sqω_pm,  S_pm_rs, E_rs, Egrid, integral_params.broadening_dE )
-		broadened_peaks!(Sqω_pp,  S_pp_rs, E_rs, Egrid, integral_params.broadening_dE )
-
-
-		if g_tensor != nothing
-			broadened_peaks!(Sqω_magnetic, S_magnetic_rs, E_rs, Egrid, 
-			integral_params.broadening_dE )
-
-		end	
-         
-        bounds[1] = min(bounds[1], reduce(min,  E_rs) ) 
-        bounds[2] = max(bounds[2], reduce(max,  E_rs) )
     end
     return Sqω_pm, Sqω_pp, Sqω_magnetic, bounds
 end
