@@ -1,9 +1,22 @@
 using Distributed
 
 include("driver.jl")
-include("../src/PlotFunctions.jl")
 
-A_FF =  load_A("gaugefiles/FF_even_pi18.gauge")
+# load the A configuration and verify that the captured flux is self-consistent
+A_FF = load_A("gaugefiles/FF_even_L2_pi2.gauge")
+
+L = Int( (length(A_FF)/16)^(1/3) )
+
+lat = geom.PyroFCC(L)
+flux_state=calc_fluxes(A_FF)
+
+mean_fluxes = sum.(eachcol(flux_state))/size(flux_state,1)
+
+# check homogeneity
+max_err = sqrt(maximum((flux_state .- mean_fluxes').^2))
+println("Largest deviation from mean flux is ", max_err)
+
+
 
 """
 Returns the ratio of g0 to g1 in the special case B || [111], given a particular value of 
@@ -29,7 +42,10 @@ function FF_111_B(desired_Φ0, Jpm)
 end
 
 
-Φ0 = 2π/3
+#Φ0 = 2π/3
+#
+@assert abs(mean_fluxes[1] - 3π/4) < 0.001
+Φ0 = 3π/4
 
 simlist = map(
     Jpm->SimulationParameters("FF",
