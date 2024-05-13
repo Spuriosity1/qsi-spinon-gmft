@@ -216,9 +216,9 @@ and eigenvector matrix. (The eigenvectors are not used)
 The integral is done using Monte Carlo, samples "nsample" times.
 """
 function calc_lambda(bandf, nsample::Int=1000, kappa::Float64=1)
-    K = rand(Float64, (nsample, 3) )*π
+    K = [ 2π*( (@SVector rand(Float64,  3 )) .-0.5) for _ in 1:nsample ]
     
-    eps = reduce(vcat, map(k->bandf(k)[1],eachrow(K))')
+    eps = reduce(vcat, map(k->bandf(k)[1], K)')
 
     min_lam = -minimum(eps)
     bandwidth = maximum(eps) + min_lam
@@ -316,7 +316,7 @@ Calculates the spinon bands at reciprocal-space point `k` for the given
 parameters. E and U are respectively the spinon energies and the eigenvectors
 of the hopping matrix.
 """
-function spinon_dispersion(k::Union{Vec3_F64,Vector{Float64}}, sim::SimulationParameters)
+function spinon_dispersion(k::Vec3_F64, sim::SimulationParameters)
     ϵ, U = diagonalise_M(k, sim.A, sim.Jpm, sim.B)
     # if minimum(ϵ.+ sim.λ ) < 0
     #     println("gap closing found near k = $(k)")
@@ -324,6 +324,10 @@ function spinon_dispersion(k::Union{Vec3_F64,Vector{Float64}}, sim::SimulationPa
     return sqrt.(2*(ϵ.+ sim.λ )), U
 end
 
+function spinon_dispersion(k::Vector{Float64}, sim::SimulationParameters)
+    ϵ, U = diagonalise_M(SVector{3,Float64}(k), sim.A, sim.Jpm, sim.B)
+    return sqrt.(2*(ϵ.+ sim.λ )), U
+end
 
 
 """

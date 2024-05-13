@@ -1,7 +1,6 @@
 using Distributed
 
 include("driver.jl")
-include("../src/PlotFunctions.jl")
 
 A_FF =  load_A("gaugefiles/FF_even_pi18.gauge")
 
@@ -48,7 +47,9 @@ for (i, sim) in enumerate(simlist)
         data_dir="output/",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["very_slow"]
+        integral_params=integration_settings["very_fast"],
+        k_density_spinon_dispersion=20,
+        k_density_specweight=10
         )
 end
 
