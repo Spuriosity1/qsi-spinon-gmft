@@ -2,12 +2,14 @@
 .ipynb_checkpoints
 .virtual_documents
 __pycache__
-output
+output/*
 bin
 etc
 include
 lib
 lib64
+figures/*
+figures-remote
 output
 pyvenv.cfg
 share

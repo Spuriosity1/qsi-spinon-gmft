@@ -1,7 +1,14 @@
-include("SpinonStructure.jl")
-include("BZMath.jl")
-using .BZmath
-using .SpinonStructure
+using Distributed
+
+@everywhere begin
+  # instantiate environment
+  using Pkg 
+  Pkg.activate(joinpath(@__DIR__,"../"))
+  Pkg.instantiate()
+  Pkg.precompile()
+end
+
+@everywhere begin
 using LinearAlgebra
 using StaticArrays
 using ProgressMeter
@@ -11,6 +18,14 @@ using HDF5
 using Printf
 
 
+include("BZMath.jl")
+include("SpinonStructure.jl")
+end
+
+@everywhere begin
+    using .BZmath
+    using .SpinonStructure
+end
 #=
 const kspace_points = Dict(
     "\\Gamma"=> [0.,0.,0.],
@@ -35,15 +50,17 @@ function sim_identifier(sim::SimulationParameters)
 end
     
 function save_SQW(output_dir::String;
-        S::Matrix{ComplexF64},
-        bounds::Matrix{Float64},
+        Spm::Union{Matrix{ComplexF64},Vector{ComplexF64}},
+        Spp::Union{Matrix{ComplexF64},Vector{ComplexF64}},
+        Smagnetic::Union{Matrix{Float64},Vector{Float64}},
+        bounds::Union{Nothing,Matrix{Float64}},
         Egrid::Vector{Float64},
-        BZ_path::BZPath,
+        BZ_path::Union{Nothing,BZPath},
         sim::SimulationParameters, 
         ip::IntegrationParameters,
         prefix="SQW")
 
-    name = output_dir*"/"*prefix*sim_identifier(sim)
+    name = output_dir*"/"*prefix*sim_identifier(sim)*".jld"
     rm(name, force=true)
     jldopen(name, "w") do file
         g1 = create_group(file, "integration_parameters")
@@ -60,13 +77,19 @@ function save_SQW(output_dir::String;
         g["L"]=sim.lat.L
 
         d = create_group(file, "intensity") 
-        d["S"] = S
-        d["bounds"] = bounds
+        d["Spm"] = Spm
+        d["Spp"] = Spp
+        d["Smagnetic"] = Smagnetic
+        if bounds != nothing
+            d["bounds"] = bounds
+        end
         # a list of K points, such that the I'th S slics corresponds to the I'th K point
-        d["Q_list"] = BZ_path.K 
-        d["tau"] = BZ_path.t
-        d["ticks_tau"] = BZ_path.ticks_t
-        d["ticks_label"] = BZ_path.ticks_label
+        if BZ_path != nothing
+            d["Q_list"] = BZ_path.K 
+            d["tau"] = BZ_path.t
+            d["ticks_tau"] = BZ_path.ticks_t
+            d["ticks_label"] = BZ_path.ticks_label
+        end
         d["W"] = Egrid
     end
     return name
@@ -74,79 +97,145 @@ end
 
 
 
+function save_spinons(output_dir::String;
+        bands::Matrix{Float64},
+        BZ_path::BZPath,
+        sim::SimulationParameters, 
+        prefix="spinons")
 
+    name = output_dir*"/"*prefix*sim_identifier(sim)*".jld"
+    jldopen(name, "w") do file
 
-"""
-Plots integrated spectral weight over the whole Brillouin zone
-"""
-function integrated_specweight(sim::SimulationParameters, 
-						 integral_params::IntegrationParameters,
-        Egrid::Vector{Float64}
-						 )
-    Sω = zeros(ComplexF64,size(Egrid))
+        g = create_group(file, "physical_parameters")
+        g["name"] = sim.name
+        g["fluxes"] = sim.A
+        g["Jpm"] = sim.Jpm
+        g["B"] = sim.B
+        g["lambda"] = sim.λ
+        g["L"]=sim.lat.L
 
-    p = Progress(integral_params.n_K_samples)
-    @Threads.threads for _ = 1:integral_params.n_K_samples  
-        q = (1 .- 2 .*(@SVector rand(3)))*4π/8
-        k = (1 .- 2 .*(@SVector rand(3)))*4π/8
-        E, S = SpinonStructure.specweight_at(q, k, sim)
-
-
-        Sω += map( 
-            e-> sum( 
-                [ S*Lorentzian(e - E, integral_params.broadening_dE)
-                for (E,S) in zip(Enm,Snm)
-                    ]), 
-            Egrid
-            )
-        next!(p)
+        d = create_group(file, "spinon_dispersion") 
+        d["bands"] = bands
+        # a list of K points, such that the I'th S slics corresponds to the I'th K point
+        d["Q_list"] = BZ_path.K 
+        d["tau"] = BZ_path.t
+        d["ticks_tau"] = BZ_path.ticks_t
+        d["ticks_label"] = BZ_path.ticks_label
     end
-    finish!(p)
-    return Sω
-end  
+    return name
+end
+
+
 
 
 ###########
 # expensive calculations
 """
-calc_spectral_weight(sim::SimulationParameters,
+calc_spectral_weight_along_path(sim::SimulationParameters,
     ip::IntegrationParameters, Egrid::Vector{Float64}, path::BZPath)
 
     @param sim the simulation parameters
     @param ip the numerical constants, passed directly to spectral_weight
     @param Egrid the grid for energy values
     @param path the path through the Brillouin zone
+    @param g_tensor the matrix such that, with respect to local axes, m = g S
 
     Saves the results to
 """
-function calc_spectral_weight_along_path(sim::SimulationParameters,
+function calc_spectral_weight_along_path(
+    output_dir::String;
+    sim::SimulationParameters,
     ip::IntegrationParameters, Egrid::Vector{Float64}, path::BZPath,
-    output_dir::String)
+    g_tensor=nothing
+    )
     
     num_K = length(path.K)
     
-    S = zeros(ComplexF64, num_K, length(Egrid))
+    Spm = zeros(ComplexF64, num_K, length(Egrid))
+    Spp = zeros(ComplexF64, num_K, length(Egrid))
+    Smagnetic = zeros(Float64, num_K, length(Egrid))
     bounds = zeros(Float64, num_K, 2)
     
-    p = Progress(num_K)
  
-    Threads.@threads for I = 1:num_K
+    res =  @showprogress @distributed (vcat) for I = 1:num_K
         k = path.K[I]*0.5
         q = SVector(k[1], k[2], k[3])
-        S[I, :], bounds[I,:] = spectral_weight(q, Egrid, sim, ip)
-        next!(p)
+        # hard-coded DO g-tensor
+        (I, spectral_weight(q, Egrid, sim, ip, g_tensor ) )
+    end
+
+    # reorder the data properly
+    for (I, x) in res
+        Spm[I, :], Spp[I, :], Smagnetic[I, :], bounds[I,:] = x
     end
     
-    finish!(p)
-
     # save the data
-    return save_SQW(output_dir, S=S, bounds=bounds, BZ_path=path,
-        Egrid=collect(Egrid), sim=sim, ip=ip)
+    return save_SQW(output_dir, 
+        Spm=Spm,
+        Spp=Spp,
+        Smagnetic=Smagnetic, 
+        bounds=bounds,
+        BZ_path=path,
+        Egrid=collect(Egrid),
+        sim=sim, 
+        ip=ip
+        )
 end
 
 
 
+function calc_integrated_specweight(
+    output_dir::String;
+    sim::SimulationParameters,
+    ip::IntegrationParameters, Egrid::Vector{Float64},g_tensor=nothing)
 
+
+#=
+    Sω_pm = zeros(ComplexF64,size(Egrid))
+    Sω_pp = zeros(ComplexF64,size(Egrid))
+    Sω_magnetic = zeros(Float64,size(Egrid))
+=#
+    res = @showprogress @distributed (.+) for _ = 1:ip.n_K_samples  
+        q = (1 .- 2 .*(@SVector rand(3)))*4π/8
+        p = (1 .- 2 .*(@SVector rand(3)))*4π/8
+
+		E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
+
+		(
+        broadened_peaks(S_pm_rs, E_rs, Egrid, ip.broadening_dE ),
+		broadened_peaks(S_pp_rs, E_rs, Egrid, ip.broadening_dE ),
+        broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
+			ip.broadening_dE )
+            )
+
+
+    end
+ 
+    # save the data
+    return save_SQW(output_dir, 
+        Spm=res[1],
+        Spp=res[2],
+        Smagnetic=res[3],
+        bounds=nothing,
+        BZ_path=nothing,
+        Egrid=collect(Egrid), sim=sim, ip=ip,
+        prefix="integrated"
+        )
+end
+
+
+function calc_spinons_along_path(output_dir;
+    sim::SimulationParameters,
+    path::BZPath)
+    bands = @sync @showprogress @distributed (vcat) for k in path.K
+        spinon_dispersion(k, sim )[1]'
+    end
+
+    return save_spinons(output_dir;
+        bands=bands,
+        BZ_path=path,
+        sim=sim)
+end
 
 
 #########################
@@ -174,36 +263,39 @@ function estimate_upper_bound(sim)
 end
 =#
 
-function plot_spinons(sim::SimulationParameters, path::BZPath)
-    E = []
-    @showprogress for k in path.K
-        push!(E, spinon_dispersion(k, sim )[1]')
-    end
-    E = reduce(vcat, E)
+function plot_spinons(data::Dict)
+    d = data["spinon_dispersion"]
 
-    plot(path.t,E,legend=false,color=:black,lw=0.5)
-    xticks!(path.ticks_t, path.ticks_label)
-    ylims!(0.,maximum(E))
+    simd = data["physical_parameters"]
 
-    bstr = @sprintf("[%.3f,%.3f,%.3f]",sim.B[1],sim.B[2],sim.B[3])  
-    if norm( abs.(sim.B/norm(sim.B))- [1,1,1]/√3) < 1e-8
-        bstr = @sprintf("%.3f [1,1,1]/\\sqrt{3}", norm(sim.B) )
-    elseif norm( abs.(sim.B/norm(sim.B))- [1,1,0]/√2) < 1e-8
-        bstr = @sprintf("%.3f [1,1,0]/\\sqrt{2}", norm(sim.B))
+    B = simd["B"]
+
+    plot(d["tau"],d["bands"],legend=false,color=:black,lw=0.5)
+    xticks!(d["ticks_tau"],d["ticks_label"])
+    ylims!(0.,maximum(d["bands"]) )
+
+    bstr = @sprintf("[%.3f,%.3f,%.3f]",B[1],B[2],B[3])  
+    if norm( abs.(B/norm(B))- [1,1,1]/√3) < 1e-8
+        bstr = @sprintf("%.3f [1,1,1]/\\sqrt{3}", norm(B) )
+    elseif norm( abs.(B/norm(B))- [1,1,0]/√2) < 1e-8
+        bstr = @sprintf("%.3f [1,1,0]/\\sqrt{2}", norm(B))
     end
-    title!(@sprintf("\$J_\\pm=%.3fJ_{yy}, B=%s J_{yy}\$",sim.Jpm,bstr)  )
+    title!(@sprintf("\$J_\\pm=%.3fJ_{yy}, B=%s J_{yy}\$",simd["Jpm"],bstr)  )
 
     return plot!()
 end
+
+
 
 
 """ 
 Plots the spectral weight (either the S+S- correlation, or something else)
 stored in the simulation stored at the specified path.
 """
-function plot_spectral_weight(data::Dict)
+function plot_spectral_weight(data::Dict, which="Spm")
     d = data["intensity"]
-    p = heatmap(d["tau"],d["W"],real.(d["S"])')
+
+    p = heatmap(d["tau"],d["W"],real.(d[which])')
     plot!(d["tau"], d["bounds"], linecolor=:white)
     xticks!(d["ticks_tau"],d["ticks_label"])
     plot!(legend=nothing)
@@ -227,6 +319,7 @@ end
 
 
 
+
 # some useful defaults
 
 const integration_settings = Dict(
@@ -235,3 +328,4 @@ const integration_settings = Dict(
     "slow" =>      IntegrationParameters(n_K_samples=1000, broadening_dE=0.02),
     "very_slow" => IntegrationParameters(n_K_samples=10000,broadening_dE=0.02)
 )
+

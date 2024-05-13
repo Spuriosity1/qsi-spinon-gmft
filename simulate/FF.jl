@@ -1,9 +1,27 @@
-include("../src/PlotFunctions.jl")
+using Distributed
 
-A_FF =  load_A("gaugefiles/FF_even_pi18.gauge")
+include("driver.jl")
+
+# load the A configuration and verify that the captured flux is self-consistent
+A_FF = load_A("gaugefiles/FF_even_L2_pi2.gauge")
+
+L = Int( (length(A_FF)/16)^(1/3) )
+
+lat = geom.PyroFCC(L)
+flux_state=calc_fluxes(A_FF)
+
+mean_fluxes = sum.(eachcol(flux_state))/size(flux_state,1)
+
+# check homogeneity
+max_err = sqrt(maximum((flux_state .- mean_fluxes').^2))
+println("Largest deviation from mean flux is ", max_err)
+
+
 
 """
-Returns the ratio of g0 to g1 in the special case B || [111], given a particular value of Φ0
+Returns the ratio of g0 to g1 in the special case B || [111], given a particular value of 
+Φ0, the flux on plaquette 0 
+The other three plaquettes have flux -Φ0/3
 """
 g0_g123_ratio_from_flux(desired_Φ0) = (1-4*cos(desired_Φ0/3)^2)^-1
 
@@ -24,7 +42,10 @@ function FF_111_B(desired_Φ0, Jpm)
 end
 
 
-Φ0 = 2π/3
+#Φ0 = 2π/3
+#
+@assert abs(mean_fluxes[1] - 3π/4) < 0.001
+Φ0 = 3π/4
 
 simlist = map(
     Jpm->SimulationParameters("FF",
@@ -37,37 +58,15 @@ simlist = map(
     [-0.01, -0.02, -0.05, -0.1]
 )
 
-
-ip = integration_settings["very_fast"]
-
-Egrid = collect(range(0,3,150))
-
-figure_dir = "figures/"
-
-path = generate_path(geom.high_symmetry_points, 
-    split("\\Gamma X W K \\Gamma L U W"), points_per_unit=5, K_units=4π/8)
-
-println("Plotting spinon dispersions...")
-# plot the spinons
-@showprogress for sim in simlist
-    p = plot_spinons(sim,path)
-    savefig(p, figure_dir*"spinon_dispersion"*sim_identifier(sim)*".pdf")
+for (i, sim) in enumerate(simlist)
+    @printf("Running simulation %d of %d\n", i, length(simlist))
+    run_sim(
+        data_dir="output/",
+        figure_dir="figures/",
+        sim=sim, 
+        integral_params=integration_settings["very_slow"]
+        )
 end
 
-println("Calculating spectral weight data...")
-datafiles = []
-# run the simulation
-for (j,sim) in enumerate(simlist)
-    @printf("Running simulation %d of %d\n", j, length(simlist))
-    f = calc_spectral_weight_along_path(sim, ip, Egrid, path, figure_dir)
-    push!(datafiles, f)
-end
 
-println("Plotting the spectral weights")
-for specweight_data in datafiles
-    data = load(specweight_data)
-    p = plot_spectral_weight(data)
-    sim = SimulationParameters(data["physical_parameters"])
-    savefig(p, figure_dir*"spectral_weight"*sim_identifier(sim)*".pdf")
-end
-
+    

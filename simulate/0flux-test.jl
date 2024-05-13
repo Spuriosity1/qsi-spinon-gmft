@@ -7,9 +7,9 @@ magnetic_fields = [
     ]
 
 simlist = map(
-    b->SimulationParameters("piflux",
-    A=[ 0 0 π π ; 0 0 0 0; 0 0 π π; 0 0 0 0 ],
-    Jpm=1/3,
+    b->SimulationParameters("TEST_0flux",
+    A=zeros(Float64, 4,4),
+    Jpm=-0.046,
     B=b,
     nsample=1000,
     kappa=2.0
@@ -23,7 +23,7 @@ for (i, sim) in enumerate(simlist)
         data_dir="output/",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["very_slow"]
+        integral_params=integration_settings["very_fast"]
         )
 end
 

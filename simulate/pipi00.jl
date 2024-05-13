@@ -1,61 +1,38 @@
-include("../src/PlotFunctions.jl")
+using Distributed
 
-A_ππ00 = [ 0 0 0 π ; 0 0 0 0; 0 0 0 π; 0 0 0 0 ]
+include("driver.jl")
 
 
 Jpm = -0.05
 
-# phase transition 0-> ππ00 is at B = √(9/5 * -Jpm) 
 Bmin =sqrt(-9*Jpm/5)
 println("minimum B = ",Bmin)
 
-# a cheap hack to see different directions
-magnetic_fields = [B0*[1,1,0]/sqrt(2)  for B0 in (Bmin, Bmin+0.1, Bmin+0.2,Bmin+0.3)]
-    
+magnetic_fields = [
+bb*[0,1,1]/√3 for bb in [Bmin, Bmin*1.5, Bmin*2]
+    ]
 
-println("Calculating chemical potentials")
+simlist_X = map(
+    b->SimulationParameters("piflux+1e-4",
+    A =  [ 0 0 0 π ; 0 0 0 0; 0 0 0 π; 0 0 0 0 ],
+    Jpm=Jpm,
+    B=b,
+    nsample=1000,
+    kappa=2.0
+    ),
+    magnetic_fields);
 
-simlist = []
-@showprogress for b in magnetic_fields
-    s = SimulationParameters("pipi00", A=A_ππ00, Jpm=Jpm, B=b, nsample=100000, kappa=2.0)
-    push!(simlist,
-          SimulationParameters(s,0.001) # an ugly hack
+simlist = [ SimulationParameters(s, 1e-4) for s in simlist_X ]
+
+for (i, sim) in enumerate(simlist)
+    @printf("Running simulation %d of %d\n", i, length(simlist))
+    run_sim(
+        data_dir="output/",
+        figure_dir="figures/",
+        sim=sim, 
+        integral_params=integration_settings["very_slow"]
         )
 end
 
-ip = integration_settings["very_slow"]
 
-Egrid = collect(range(0,3,150))
-
-figure_dir = "figures/"
-
-path = generate_path(geom.high_symmetry_points, 
-    split("\\Gamma X W K \\Gamma L U W"), points_per_unit=31, K_units=4π/8)
-
-println("Plotting spinon dispersions...")
-# plot the spinons
-@showprogress for sim in simlist
-    p = plot_spinons(sim,path)
-    savefig(p, figure_dir*"spinon_dispersion"*sim_identifier(sim)*".pdf")
-end
-
-println("Calculating spectral weight data...")
-datafiles = []
-# run the simulation
-for (j,sim) in enumerate(simlist)
-    @printf("Running simulation %d of %d\n", j, length(simlist))
-    f = calc_spectral_weight_along_path(sim, ip, Egrid, path, figure_dir)
-    push!(datafiles, f)
-end
-
-println("Plotting the spectral weights")
-for specweight_data in datafiles
-    data = load(specweight_data)
-    p = plot_spectral_weight(data)
-    sim = SimulationParameters(data["physical_parameters"])
-    savefig(p, figure_dir*"spectral_weight"*sim_identifier(sim)*".pdf")
-end
-
-println("Calculating the averaged spectral weight")
-
-
+    
