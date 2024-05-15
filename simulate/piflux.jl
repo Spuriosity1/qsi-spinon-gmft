@@ -1,4 +1,3 @@
-
 include("driver-headless.jl")
 
 magnetic_fields = [
@@ -6,7 +5,7 @@ magnetic_fields = [
     ]
 
 simlist = map(
-    b->SimulationParameters("piflux",
+    b->SimulationParameters("piflux-2",
     A=[ 0 0 π π ; 0 0 0 0; 0 0 π π; 0 0 0 0 ],
     Jpm=1/3,
     B=b,

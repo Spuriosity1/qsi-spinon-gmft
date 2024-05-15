@@ -32,6 +32,7 @@ function run_sim(;data_dir, figure_dir,
 	# autorange this based on the spinon dispersion
 	max_E = 2.2* maximum( load(d)["spinon_dispersion"]["bands"] )
 	Egrid = collect(range(0,max_E,150)) # TODO consider updating this based on broadening_dE
+    println("Max energy for specweight: $(max_E)")
 	
 	
 	# k-resolved simulation

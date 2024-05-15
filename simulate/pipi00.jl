@@ -12,7 +12,7 @@ bb*[0,1,1]/√3 for bb in [Bmin, Bmin*1.5, Bmin*2]
     ]
 
 simlist_X = map(
-    b->SimulationParameters("piflux+1e-4",
+    b->SimulationParameters("pipi00+1e-4",
     A =  [ 0 0 0 π ; 0 0 0 0; 0 0 0 π; 0 0 0 0 ],
     Jpm=Jpm,
     B=b,

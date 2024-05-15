@@ -76,6 +76,31 @@ function calc_fluxes(lattice::geom.PyroFCC, A)
 end
 
 
+"""
+	calc_fluxes( A)
+
+Computes the fluxes on `lattice` produces by vector field `A`, in the same 
+format as that produced  by `load_A`. Allocates a new Lattice object, of length (length(A) / 8)^1/3
+"""
+function calc_fluxes(A)
+    
+    lattice = geom.PyroFCC( Integer((length(A) / 16)^(1/3)) )
+    
+    Phi = ones(ComplexF64, length(lattice.A_sites), 4)
+    hexa_sites = geom.get_hexagons(lattice)
+    
+    for (I, row) in enumerate(hexa_sites)
+        for (nu, hex) in enumerate(row)
+            for (i, (J, sl)) in enumerate(hex)
+                Phi[I,nu] *= exp(1im * A[J, sl] * (-1)^i )
+            end
+        end
+    end
+   
+    return angle.(Phi)
+end
+
+
 raw"""
 	calc_nn_hopping(lat, K, A, B)
 	->H_B
@@ -498,7 +523,7 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
     E1, U1 = spinon_dispersion( p, sim )
-    E2, U2 = spinon_dispersion( q-p, sim )
+    E2, U2 = spinon_dispersion( p-q, sim )
 
     local W_pm = zeros(ComplexF64,4,4)
     local W_pp = zeros(ComplexF64,4,4)
