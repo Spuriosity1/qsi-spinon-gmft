@@ -16,10 +16,8 @@ using Printf
 include("BZMath.jl")
 include("SpinonStructure.jl")
 
-@everywhere begin
-    using .BZmath
-    using .SpinonStructure
-end
+using .BZmath
+using .SpinonStructure
 
 
     
@@ -40,11 +38,13 @@ function save_SQW(output_dir::String;
         g1 = create_group(file, "integration_parameters")
         g1["n_K_samples"] = ip.n_K_samples
         g1["broadening_dE"] = ip.broadening_dE
+        g1["version"] = 1.0
 #        g1["BZ_grid_density"] = ip.BZ_grid_density
 
         g = create_group(file, "physical_parameters")
         g["name"] = sim.name
-        g["fluxes"] = sim.A
+        g["emergent_fluxes"] = calc_fluxes(sim.A)
+        g["gauge"] = sim.A
         g["Jpm"] = sim.Jpm
         g["B"] = sim.B
         g["lambda"] = sim.λ
@@ -137,9 +137,14 @@ function calc_spectral_weight_along_path(
         q = SVector(k[1], k[2], k[3])
         # hard-coded DO g-tensor
         try
+            # no race condition here, yay
             Spm[I, :], Spp[I, :], Smagnetic[I, :], bounds[I,:] = spectral_weight(q, Egrid, sim, ip, g_tensor )
         catch e
-            println("Q= $(q), error $(e)")
+            if e isa DomainError
+                println("Q= $(q), negative dispersion: $(e)")
+            else
+                throw(e)
+            end
         end
         next!(p)
     end
@@ -173,39 +178,50 @@ function calc_integrated_specweight(
     Sω_magnetic = zeros(Float64,size(Egrid))
 =#
 
-    errors=[]
     prog = Progress(ip.n_K_samples, desc="BZ Average")
+ 
+    Spm_res = zeros(ComplexF64, Threads.nthreads(), length(Egrid) ) 
+    Spp_res = zeros(ComplexF64, Threads.nthreads(), length(Egrid) ) 
+    Smagnetic_res = zeros(Float64, Threads.nthreads(), length(Egrid) ) 
 
-    res = (Egrid*0im, Egrid*0im, Egrid*0)
     Threads.@threads for _ = 1:ip.n_K_samples  
         q = (1 .- 2 .*(@SVector rand(3)))*4π/8
         p = (1 .- 2 .*(@SVector rand(3)))*4π/8
 
         try
             E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
-            res .+= (
-                     broadened_peaks(S_pm_rs, E_rs, Egrid, ip.broadening_dE ),
-                     broadened_peaks(S_pp_rs, E_rs, Egrid, ip.broadening_dE ),
-                     broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
-                                     ip.broadening_dE )
-                    )
+            
+            # race condition time
+            id = Threads.threadid()
+            Spm_res[id, :] += broadened_peaks(S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            Spp_res[id, :] += broadened_peaks(S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            Smagnetic_res[id, :] += broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
+                                         ip.broadening_dE )
+                    
         catch e
-            println("Negative dispersion at q=$(q), p=$(p)")
+            if e isa DomainError
+                println("p=$(p) or p-q=$(p-q): Negative dispersion")
+            else
+                throw(e)
+            end
         end
         next!(prog)
     end
+    
+
     finish!(prog)
- 
-    # save the data
+
+
+    # add the threads' results together and save the data
     return save_SQW(output_dir, 
-        Spm=res[1],
-        Spp=res[2],
-        Smagnetic=res[3],
-        bounds=nothing,
-        BZ_path=nothing,
-        Egrid=collect(Egrid), sim=sim, ip=ip,
-        prefix="integrated"
-        )
+                    Spm=sum(eachrow(Spm_res)),
+                    Spp=sum(eachrow(Spp_res)),
+                    Smagnetic=sum(eachrow(Smagnetic_res)),
+                    bounds=nothing,
+                    BZ_path=nothing,
+                    Egrid=collect(Egrid), sim=sim, ip=ip,
+                    prefix="integrated"
+                   )
 end
 
 
@@ -214,15 +230,18 @@ function calc_spinons_along_path(output_dir;
     path::BZPath)
     num_K = length(path.K)
     bands = zeros(Float64, num_K, length(sim.lat.tetra_sites))
-    errors = []
+    
     prog=Progress(num_K, desc="Spinon Dispersion: ") 
     @Threads.threads for J=1:num_K
         bands[J,:] = begin
             try
                 spinon_dispersion(path.K[J], sim )[1]'
             catch e
-                push!(errors, (e, path,K[J]))
-                NaN*ones(Float64, 1,length(sim.lat.tetra_sites))
+                if e isa DomainError
+                    NaN*ones(Float64, 1,length(sim.lat.tetra_sites))
+                else
+                    throw(e)
+                end
             end
         end
         next!(prog)
