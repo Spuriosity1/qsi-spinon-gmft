@@ -326,7 +326,7 @@ function integrated_fieldsweep(output_dir::String;
         this_sim = SimulationParameters(sim.name,
                                         A=sim.A, Jpm=sim.Jpm,
                                         B=field_direction*magnetic_field_strengths[J],
-                                        nsample = sim.nsample
+                                        nsample = 10000,
                                         kappa=2.0)
 
         Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(output_dir,
