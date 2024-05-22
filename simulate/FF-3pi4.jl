@@ -43,7 +43,7 @@ function FF_111_B(desired_Φ0, Jpm)
 end
 
 
-Φ0 = 7π/8
+Φ0 = 3π/4
 #
 @assert abs(mean_fluxes[1] - Φ0) < 0.001
 
@@ -55,7 +55,8 @@ simlist_X = map(
         nsample=1000,
         kappa=2.0
     ),
-    [-0.01, -0.02, -0.05, -0.1]
+    [ -0.05, -0.1]
+    #[-0.01, -0.02, -0.05, -0.1]
 )
 
 simlist = [ SimulationParameters(s, 1e-4) for s in simlist_X ]
@@ -66,7 +67,7 @@ for (i, sim) in enumerate(simlist)
         data_dir="output/",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["fast"],
+        integral_params=integration_settings["slow"],
         k_density_spinon_dispersion=20,
         k_density_specweight=10
         )

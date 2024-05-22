@@ -523,7 +523,7 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
     E1, U1 = spinon_dispersion( p, sim )
-    E2, U2 = spinon_dispersion( p-q, sim )
+    E2, U2 = spinon_dispersion( q-p, sim )
 
     local W_pm = zeros(ComplexF64,4,4)
     local W_pp = zeros(ComplexF64,4,4)

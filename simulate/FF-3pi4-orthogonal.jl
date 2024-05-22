@@ -3,7 +3,8 @@ using Distributed
 include("driver-headless.jl")
 
 # load the A configuration and verify that the captured flux is self-consistent
-A_FF = load_A("gaugefiles/FF_even_L2_7pi8.gauge")
+A_FF = load_A("gaugefiles/FF_even_L2_3pi4.gauge")
+
 
 L = Int( (length(A_FF)/16)^(1/3) )
 
@@ -42,19 +43,20 @@ function FF_111_B(desired_Φ0, Jpm)
 end
 
 
-Φ0 = 7π/8
+Φ0 = 3π/4
 #
 @assert abs(mean_fluxes[1] - Φ0) < 0.001
 
 simlist_X = map(
-    Jpm->SimulationParameters("FF-7pi8",
+    Jpm->SimulationParameters("FF-3pi4",
         A=A_FF, 
         Jpm=Jpm,
-        B=FF_111_B(Φ0, Jpm)* [1.,1.,1.]/sqrt(3),
+        B=FF_111_B(Φ0, Jpm)* [-1.,1.,1.]/sqrt(3),
         nsample=1000,
         kappa=2.0
     ),
-    [-0.01, -0.02, -0.05, -0.1]
+    [ -0.05, -0.1]
+    #[-0.01, -0.02, -0.05, -0.1]
 )
 
 simlist = [ SimulationParameters(s, 1e-4) for s in simlist_X ]
