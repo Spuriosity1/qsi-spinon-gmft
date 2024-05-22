@@ -70,6 +70,45 @@ function save_SQW(output_dir::String;
 end
 
 
+function save_field_sweep(output_dir::String;
+        Spm::Union{Matrix{ComplexF64},Vector{ComplexF64}},
+        Spp::Union{Matrix{ComplexF64},Vector{ComplexF64}},
+        Smagnetic::Union{Matrix{Float64},Vector{Float64}},
+        Egrid::Vector{Float64},
+        magnetic_field_strengths::Vector{Float64},
+        sim::SimulationParameters, 
+        ip::IntegrationParameters,
+        prefix="int_fieldsweep")
+
+    name = output_dir*"/"*prefix*sim_identifier(sim)*".jld"
+    rm(name, force=true)
+    jldopen(name, "w") do file
+        g1 = create_group(file, "integration_parameters")
+        g1["n_K_samples"] = ip.n_K_samples
+        g1["broadening_dE"] = ip.broadening_dE
+        g1["version"] = 1.0
+#        g1["BZ_grid_density"] = ip.BZ_grid_density
+
+        g = create_group(file, "physical_parameters")
+        g["name"] = sim.name
+        g["emergent_fluxes"] = calc_fluxes(sim.A)
+        g["gauge"] = sim.A
+        g["Jpm"] = sim.Jpm
+        g["B"] = sim.B
+        g["lambda"] = sim.λ
+        g["L"]=sim.lat.L
+
+        d = create_group(file, "integrated_intensity") 
+        d["Spm"] = Spm
+        d["Spp"] = Spp
+        d["Smagnetic"] = Smagnetic
+        d["W"] = Egrid
+        d["magnetic_field_strengths"] = magnetic_field_strengths
+    end
+    return name
+end
+
+
 
 function save_spinons(output_dir::String;
         bands::Matrix{Float64},
@@ -224,6 +263,97 @@ function calc_integrated_specweight(
                    )
 end
 
+
+
+
+
+# single-threaded version
+function calc_integrated_S(
+    output_dir::String;
+    sim::SimulationParameters,
+    ip::IntegrationParameters,
+    Egrid::Vector{Float64},
+    g_tensor=nothing
+    )
+ 
+    Spm_res = zeros(ComplexF64, length(Egrid) ) 
+    Spp_res = zeros(ComplexF64, length(Egrid) ) 
+    Smagnetic_res = zeros(Float64, length(Egrid) ) 
+
+    for _ = 1:ip.n_K_samples  
+        q = (1 .- 2 .*(@SVector rand(3)))*4π/8
+        p = (1 .- 2 .*(@SVector rand(3)))*4π/8
+
+        try
+            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor) 
+            Spm_res += broadened_peaks(S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            Spp_res += broadened_peaks(S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            Smagnetic_res += broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
+                                         ip.broadening_dE )
+                    
+        catch e
+            if e isa DomainError
+                println("p=$(p) or p-q=$(p-q): Negative dispersion")
+            else
+                throw(e)
+            end
+        end
+    end
+    
+
+    return Spm_res, Spp_res, Smagnetic_res
+end
+
+
+function integrated_fieldsweep(output_dir::String;
+    sim::SimulationParameters, # B parameter specifies only field
+    magnetic_field_strengths::Vector{Float64},
+    ip::IntegrationParameters,
+    Egrid::Vector{Float64},
+    g_tensor)
+
+    num_B = length(magnetic_field_strengths)
+    prog=Progress(num_B, desc="Field Sweep: ") 
+
+    Spm = zeros(ComplexF64, num_B, length(Egrid))
+    Spp = zeros(ComplexF64, num_B, length(Egrid))
+    Smagnetic = zeros(Float64, num_B, length(Egrid))
+
+    field_direction = sim.B/norm(sim.B)
+    
+    @Threads.threads for J=1:num_B
+
+        this_sim = SimulationParameters(sim.name,
+                                        A=sim.A, Jpm=sim.Jpm,
+                                        B=field_direction*magnetic_field_strengths[J],
+                                        nsample = sim.nsample
+                                        kappa=2.0)
+
+        Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(output_dir,
+                                                            sim=this_sim,
+                                                            ip=ip,
+                                                            Egrid=Egrid,
+                                                            g_tensor=g_tensor
+                                                           )
+        Spm[J,:] = Spm_res
+        Spp[J,:] = Spp_res
+        Smagnetic[J,:] = Smagnetic_res
+
+        next!(prog)
+    end
+    finish!(prog)
+
+
+    save_field_sweep(output_dir::String;
+        Spm=Spm,
+        Spp=Spp,
+        Smagnetic=Smagnetic,
+        Egrid=Egrid,
+        magnetic_field_strengths=magnetic_field_strengths,
+        sim=sim, 
+        ip=ip
+       )
+end
 
 
 
