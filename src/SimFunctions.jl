@@ -306,7 +306,7 @@ end
 
 
 function integrated_fieldsweep(output_dir::String;
-    sim::SimulationParameters, # B parameter specifies only field
+    sim_factory, # A map taking in a bield strength and returning SimulationParameters
     magnetic_field_strengths::Vector{Float64},
     ip::IntegrationParameters,
     Egrid::Vector{Float64},
@@ -322,12 +322,7 @@ function integrated_fieldsweep(output_dir::String;
     field_direction = sim.B/norm(sim.B)
     
     @Threads.threads for J=1:num_B
-
-        this_sim = SimulationParameters(sim.name,
-                                        A=sim.A, Jpm=sim.Jpm,
-                                        B=field_direction*magnetic_field_strengths[J],
-                                        nsample = 10000,
-                                        kappa=2.0)
+        this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParame
 
         Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(output_dir,
                                                             sim=this_sim,
