@@ -114,6 +114,8 @@ struct PyroFCC
     end
 end
 
+
+
 """
 tetra_idx(lattice::PyroFCC, tetra_pos_::Vec3)
 

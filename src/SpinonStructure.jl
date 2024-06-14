@@ -1,7 +1,5 @@
 module SpinonStructure
 
-
-
 include("PyrochloreGeometry.jl")
 import .PyrochloreGeometry as geom
 import CSV
@@ -15,7 +13,7 @@ using Printf
 export load_A, calc_fluxes, SimulationParameters, IntegrationParameters
 export geom, spinon_dispersion, spectral_weight, integrated_specweight
 export corr_at, broadened_peaks, sim_identifier
- 
+
 
 # The thread switching this does is not desirable at all
 LinearAlgebra.BLAS.set_num_threads(1)
@@ -74,6 +72,7 @@ function calc_fluxes(lattice::geom.PyroFCC, A)
    
     return angle.(Phi)
 end
+
 
 
 """
