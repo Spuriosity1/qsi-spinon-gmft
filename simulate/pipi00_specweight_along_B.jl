@@ -10,7 +10,7 @@ Bmin =sqrt(-9*Jpm/5)
 name="TEST_mix_pipi00"
 
 sim_0flux = SimulationParameters(name,
-    A =  [ 0 0 0 0 ; 0 0 0 0; 0 0 0 0; 0 0 0 0 ],
+    A =  [ 0. 0 0 0 ; 0 0 0 0; 0 0 0 0; 0 0 0 0 ],
     Jpm=Jpm,
     B=[1.,1.,0.]/√3,
     nsample=1000,
@@ -34,6 +34,8 @@ G = @SMatrix [0. 0. 0.;
 
 data_dir="output/"
 
+field_direction = (@SVector [1.,1.,0.])/√3
+
 
 function sim_factory(modB)
     if modB < Bmin
@@ -43,15 +45,18 @@ function sim_factory(modB)
     end
     return SimulationParameters(sim.name,
                                         A=sim.A, Jpm=sim.Jpm,
-                                        B=modB*[1.,1.,0.]/√3,
-                                        nsample = 10000,
+                                        B=modB*field_direction,
+                                        nsample = 100000,
                                         kappa=2.0)
 end
+
+ip = IntegrationParameters(n_K_samples=100000,broadening_dE=0.02)
+# integration_settings["very_slow"]
 
 f = integrated_fieldsweep(data_dir, 
                           sim_factory=sim_factory,
                           magnetic_field_strengths=collect(range(0,0.5,50)),
-                          ip=integration_settings["very_fast"],
+                          ip=ip,
                           Egrid=Egrid, g_tensor=G
                          )
 println("Saving data to $(f)")

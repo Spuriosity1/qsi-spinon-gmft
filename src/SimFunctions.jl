@@ -319,10 +319,9 @@ function integrated_fieldsweep(output_dir::String;
     Spp = zeros(ComplexF64, num_B, length(Egrid))
     Smagnetic = zeros(Float64, num_B, length(Egrid))
 
-    field_direction = sim.B/norm(sim.B)
     
     @Threads.threads for J=1:num_B
-        this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParame
+        this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParameters
 
         Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(output_dir,
                                                             sim=this_sim,
@@ -345,7 +344,7 @@ function integrated_fieldsweep(output_dir::String;
         Smagnetic=Smagnetic,
         Egrid=Egrid,
         magnetic_field_strengths=magnetic_field_strengths,
-        sim=sim, 
+        sim=sim_factory(magnetic_field_strengths[1]), 
         ip=ip
        )
 end
