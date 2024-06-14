@@ -9,23 +9,7 @@ Bmin =sqrt(-9*Jpm/5)
 
 name="TEST_mix_pipi00"
 
-sim_0flux = SimulationParameters(name,
-    A =  [ 0 0 0 0 ; 0 0 0 0; 0 0 0 0; 0 0 0 0 ],
-    Jpm=Jpm,
-    B=[1.,1.,0.]/√3,
-    nsample=1000,
-    kappa=2.0
-    )
 
-
-
-sim_ππ00 = SimulationParameters(name,
-    A =  [ 0 0 0 π ; 0 0 0 0; 0 0 0 π; 0 0 0 0 ],
-    Jpm=Jpm,
-    B=[1.,1.,0.]/√3,
-    nsample=1000,
-    kappa=2.0
-    )
 
 
 G = @SMatrix [0. 0. 0.;
@@ -37,15 +21,25 @@ data_dir="output/"
 
 function sim_factory(modB)
     if modB < Bmin
-        sim = sim_0flux
+        return SimulationParameters(name,
+        lattice=geom.PyroPrimitive(1,1,1),
+        A=[0 0 0 0],
+        Jpm=Jpm,
+        B=[1.,1.,0.]/√3,
+        nsample=1000,
+        kappa=2.0
+        )
+
     else
-        sim = sim_ππ00
+        return SimulationParameters(name,
+        lattice=geom.PyroPrimitive(2,1,1),
+        A =  construct_landau_gauge(lat, [0 0 0 π; 0 0 0 0; 0 0 0 0]),
+        Jpm=Jpm,
+        B=[1.,1.,0.]/√3,
+        nsample=1000,
+        kappa=2.0
+        )
     end
-    return SimulationParameters(sim.name,
-                                        A=sim.A, Jpm=sim.Jpm,
-                                        B=modB*[1.,1.,0.]/√3,
-                                        nsample = 10000,
-                                        kappa=2.0)
 end
 
 f = integrated_fieldsweep(data_dir, 

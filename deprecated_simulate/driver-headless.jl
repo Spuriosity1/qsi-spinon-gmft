@@ -6,8 +6,7 @@ function run_sim(;data_dir, figure_dir,
 	calc_specweight=true,
 	calc_integrated=true,
 	k_density_spinon_dispersion=60,
-	k_density_specweight=20,
-	fudge_lambda=0.
+	k_density_specweight=20
 	)
 
 
@@ -24,7 +23,7 @@ function run_sim(;data_dir, figure_dir,
 		points_per_unit=k_density_specweight, K_units=4π/8)
 
     println("Calculating large-N spinon mass")
-    lambda = calc_lambda(sim) + fudge_lambda
+    lambda = calc_lambda(sim)
     
 	println("Computing spinon dispersions...")
 	# compute spinons
@@ -34,9 +33,7 @@ function run_sim(;data_dir, figure_dir,
 	datafiles = []
 
 	# autorange this based on the spinon dispersion
-	band_data = load(d)["spinon_dispersion"]["bands"]
-	band_data[ isnan.(band_data) ] .= - Inf # an ugly hack
-	max_E = 2.2* maximum( band_data )
+	max_E = 2.2* maximum( load(d)["spinon_dispersion"]["bands"] )
 	Egrid = collect(range(0,max_E,150)) # TODO consider updating this based on broadening_dE
     println("Max energy for specweight: $(max_E)")
 	
@@ -60,7 +57,6 @@ function run_sim(;data_dir, figure_dir,
 	    @printf("Running BZ integrated specweight simulation...\n")
 	    f = calc_integrated_specweight(data_dir, 
 	    sim=sim,
-		λ=lambda,
 	    ip=integral_params, 
 	    Egrid=Egrid, g_tensor=G)
 	    # f = data_dir*"/SQW"*sim_identifier(sim)*".jld"

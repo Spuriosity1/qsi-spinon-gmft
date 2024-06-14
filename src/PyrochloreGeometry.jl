@@ -9,6 +9,8 @@ const Vec3_F64 = SVector{3, Float64};
 const MVec3 = MVector{3,Int64};
 const MVec3_F64 = MVector{3, Float64};
 
+
+
 pyro = map(x->SVector{3,Int}(x), [
      [ 1,  1,  1],
      [ 1, -1, -1],
@@ -88,13 +90,12 @@ axis = map(x->SMatrix{3,3,Float64}(reduce(hcat,x)),[
 Represents a pyrochlore lattice within cubic FCC superlattice
 @member L the number of cubic cells along one dimension (e.g. L=2 has 2^3*16 =128 sites) 
 @member tetra_sites the tetrahedron locations
-@member A_sites the 'up' tetrahedron locations, corresponds to the first half of tetra_sites
 @member spin_sites the spin locations
 """
 struct PyroFCC
     L::Int
     tetra_sites::Vector{Vec3}
-    A_sites::Vector{Vec3}
+    # A_sites::Vector{Vec3}
     spin_sites::Vector{Vec3}
     
     function PyroFCC(L::Int)
@@ -110,9 +111,51 @@ struct PyroFCC
                 end
             end
         end
-        new(L, vcat(as, map(x->x+[2, 2, 2], as)), as, ss)
+        new(L, vcat(as, map(x->x+[2, 2, 2], as)), ss)
     end
 end
+
+const primitive_basis = @SMatrix [ 0 4 4; 4 0 4; 4 4 0 ]
+
+"""
+Represents a pyrochlore lattice with generic basis
+@member L the number of primitive cells along the three primitive axes
+@member tetra_sites the tetrahedron locations (the first half of threse are 'A' sites
+@member spin_sites the spin locations
+"""
+struct PyroPrimitive
+    L::SVector{3, Int}
+    tetra_sites::Vector{Vec3} # the first half of these are the 'A' sites
+    spin_sites::Vector{Vec3}
+    function PyroPrimitive(L1, L2, L3)
+        L = @SVector [ L1, L2, L3 ]
+        
+        as = Vector{Vec3}()
+        ss = Vector{Vec3}()
+        
+        for ix in 0:L[1]-1, iy in 0:L[2]-1, iz in 0:L[3]-1
+            rA = primitive_basis * [ix, iy, iz]
+            # for fcc=1:4
+            #     rA = fcc_Dy[fcc] + 8*[ix, iy, iz]
+            push!(as, rA)
+            for spin_sl=1:4
+                push!(ss, rA + pyro[spin_sl])
+            end
+        end
+        new(L, vcat(as, map(x->x+[2, 2, 2], as)), ss)
+    end
+end
+
+const PyroGeneric = Union{PyroFCC, PyroPrimitive}
+
+function A_sites(lat::PyroGeneric)
+    L = div( length(lat.tetra_sites), 2)
+    return lat.tetra_sites[1:L]
+end
+
+
+
+
 
 
 
@@ -285,7 +328,78 @@ function get_dual_fcc_locations(lattice::PyroFCC)
 end
 
 
-function get_hexagons(lattice::PyroFCC)
+
+
+
+const u = @SMatrix [ 0 1 0; 1 0 0; 1 1 -1 ]
+const v = @SMatrix [ 1 0 -1; 0 1 -1; 0 0 1 ]
+const d = @SVector [ 4, 4, 8 ]
+
+function tetra_IDX(lattice::PyroPrimitive, tetra_pos_::SVector{3,Int64})
+
+    diamond_sl =  (tetra_pos_[1] & 0x2) >> 1
+    #  !!! 0-based index
+    
+    # if this bit is set, there is a "+2" or "+6" somewhere. 
+    # therefore it is SL 2
+    # @assert mod.(u * tetra_pos, d) == (@SVector [0,0,0]) ||  mod.(u * tetra_pos, d) == (@SVector [2,2,2])
+    return mod.(v * fld.(u * tetra_pos_, d), lattice.L), diamond_sl
+end
+
+function tetra_idx(lattice::PyroPrimitive, tetra_pos_::SVector{3,Int64})
+    I, diamond_sl = tetra_IDX(lattice, tetra_pos_)
+    return ((diamond_sl*lattice.L[1]+I[1])*lattice.L[2]+I[2])*lattice.L[3] + I[3] + 1
+end
+
+function spin_sl(lattice::PyroPrimitive, spin_pos_::SVector{3, Int})
+    # figure out the spin sublattice
+   
+    tmp = MVector{3, Int64}(spin_pos_)
+
+    #decide the spin sublattice
+    spin_sl = -1
+    for ssl in 1:4
+        tmp = spin_pos_ - pyro[ssl]
+        
+        if all(mod.(tmp, 4) .== 0)
+            return ssl
+        end
+    end
+    
+end
+
+function spin_idx(lattice::PyroPrimitive, spin_pos_::SVector{3, Int})
+    
+    tmp = MVector{3, Int64}(spin_pos_)
+
+    #decide the spin sublattice
+    spin_sl = -1
+    for ssl in 1:4
+        tmp = spin_pos_ - pyro[ssl]
+        
+        if all(mod.(tmp, 4) .== 0)
+            spin_sl = ssl
+            break
+        end
+    end
+    
+    I, _ = tetra_IDX(lattice, tmp)
+    return ((I[1]*lattice.L[2]+I[2])*lattice.L[3] + I[3])*4 + spin_sl
+end
+
+
+function get_dual_A_fcc_locations(lattice::PyroPrimitive)
+    locs = []
+    for ix in 0:lattice.L[1]-1, iy in 0:lattice.L[2]-1, iz in 0:lattice.L[3]-1
+        rA = primitive_basis * [ix, iy, iz]
+        push!(locs, rA + [4,4,4])
+    end
+        
+    return locs
+end
+
+
+function get_hexagons(lattice::PyroGeneric)
     #=
     Returns a list of n_spin hexagons, in the format of 6-membered lists
     [[J1, mu1] [J1, nu1] [J2, mu3] .... [J3,nu3]]
@@ -312,6 +426,7 @@ function get_hexagons(lattice::PyroFCC)
 end
 
 
+
 const high_symmetry_points = Dict(
     "\\Gamma"=> [0.,0.,0.],
     "X"=> [1.,0.,0.],
@@ -320,5 +435,4 @@ const high_symmetry_points = Dict(
     "L"=> [0.5,0.5,0.5],
     "U"=> [1.0, 0.25,0.25]
 )
-
 end

@@ -38,16 +38,15 @@ function save_SQW(output_dir::String;
         g1 = create_group(file, "integration_parameters")
         g1["n_K_samples"] = ip.n_K_samples
         g1["broadening_dE"] = ip.broadening_dE
-        g1["version"] = 1.0
+        g1["version"] = 1.1
 #        g1["BZ_grid_density"] = ip.BZ_grid_density
 
         g = create_group(file, "physical_parameters")
         g["name"] = sim.name
-        g["emergent_fluxes"] = calc_fluxes(sim.A)
+        g["emergent_fluxes"] = calc_fluxes(sim.lat, sim.A)
         g["gauge"] = sim.A
         g["Jpm"] = sim.Jpm
         g["B"] = sim.B
-        g["lambda"] = sim.λ
         g["L"]=sim.lat.L
 
         d = create_group(file, "intensity") 
@@ -87,15 +86,13 @@ function save_field_sweep(output_dir::String;
         g1["n_K_samples"] = ip.n_K_samples
         g1["broadening_dE"] = ip.broadening_dE
         g1["version"] = 1.0
-#        g1["BZ_grid_density"] = ip.BZ_grid_density
 
         g = create_group(file, "physical_parameters")
         g["name"] = sim.name
-        g["emergent_fluxes"] = calc_fluxes(sim.A)
+        g["emergent_fluxes"] = calc_fluxes(sim.lat, sim.A)
         g["gauge"] = sim.A
         g["Jpm"] = sim.Jpm
         g["B"] = sim.B
-        g["lambda"] = sim.λ
         g["L"]=sim.lat.L
 
         d = create_group(file, "integrated_intensity") 
@@ -124,7 +121,6 @@ function save_spinons(output_dir::String;
         g["fluxes"] = sim.A
         g["Jpm"] = sim.Jpm
         g["B"] = sim.B
-        g["lambda"] = sim.λ
         g["L"]=sim.lat.L
 
         d = create_group(file, "spinon_dispersion") 
@@ -157,7 +153,7 @@ calc_spectral_weight_along_path(sim::SimulationParameters,
 """
 function calc_spectral_weight_along_path(
     output_dir::String;
-    sim::SimulationParameters,
+    sim::SimulationParameters, λ::Float64,
     ip::IntegrationParameters, Egrid::Vector{Float64}, path::BZPath,
     g_tensor=nothing
     )
@@ -177,7 +173,7 @@ function calc_spectral_weight_along_path(
         # hard-coded DO g-tensor
         try
             # no race condition here, yay
-            Spm[I, :], Spp[I, :], Smagnetic[I, :], bounds[I,:] = spectral_weight(q, Egrid, sim, ip, g_tensor )
+            Spm[I, :], Spp[I, :], Smagnetic[I, :], bounds[I,:] = spectral_weight(q, Egrid, sim, λ, ip, g_tensor )
         catch e
             if e isa DomainError
                 println("Q= $(q), negative dispersion: $(e)")
@@ -207,7 +203,7 @@ end
 
 function calc_integrated_specweight(
     output_dir::String;
-    sim::SimulationParameters,
+    sim::SimulationParameters, λ::Float64,
     ip::IntegrationParameters, Egrid::Vector{Float64},g_tensor=nothing)
 
 
@@ -228,7 +224,7 @@ function calc_integrated_specweight(
         p = (1 .- 2 .*(@SVector rand(3)))*4π/8
 
         try
-            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor)
+            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, λ, g_tensor)
             
             # race condition time
             id = Threads.threadid()
@@ -253,14 +249,11 @@ function calc_integrated_specweight(
 
     # add the threads' results together and save the data
     return save_SQW(output_dir, 
-                    Spm=sum(eachrow(Spm_res)),
-                    Spp=sum(eachrow(Spp_res)),
-                    Smagnetic=sum(eachrow(Smagnetic_res)),
-                    bounds=nothing,
-                    BZ_path=nothing,
-                    Egrid=collect(Egrid), sim=sim, ip=ip,
-                    prefix="integrated"
-                   )
+                Spm=collect(sum(eachrow(Spm_res))),
+                Spp=collect(sum(eachrow(Spp_res))),
+                Smagnetic=collect(sum(eachrow(Smagnetic_res))),
+                bounds=nothing, BZ_path=nothing, Egrid=collect(Egrid),
+                sim=sim, ip=ip, prefix="integrated")
 end
 
 
@@ -271,6 +264,7 @@ end
 function calc_integrated_S(
     output_dir::String;
     sim::SimulationParameters,
+    λ::Float64,
     ip::IntegrationParameters,
     Egrid::Vector{Float64},
     g_tensor=nothing
@@ -285,7 +279,7 @@ function calc_integrated_S(
         p = (1 .- 2 .*(@SVector rand(3)))*4π/8
 
         try
-            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, g_tensor) 
+            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, λ, g_tensor) 
             Spm_res += broadened_peaks(S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
             Spp_res += broadened_peaks(S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
             Smagnetic_res += broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
@@ -306,7 +300,7 @@ end
 
 
 function integrated_fieldsweep(output_dir::String;
-    sim_factory, # A map taking in a bield strength and returning SimulationParameters
+    sim_factory, # A map taking in a field strength and returning SimulationParameters
     magnetic_field_strengths::Vector{Float64},
     ip::IntegrationParameters,
     Egrid::Vector{Float64},
@@ -322,10 +316,11 @@ function integrated_fieldsweep(output_dir::String;
     field_direction = sim.B/norm(sim.B)
     
     @Threads.threads for J=1:num_B
-        this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParame
-
+        this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParameters
+        this_λ = calc_lambda(this_sim)
         Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(output_dir,
                                                             sim=this_sim,
+                                                            λ=this_λ,
                                                             ip=ip,
                                                             Egrid=Egrid,
                                                             g_tensor=g_tensor
@@ -355,6 +350,7 @@ end
 
 function calc_spinons_along_path(output_dir;
     sim::SimulationParameters,
+    λ::Float64,
     path::BZPath)
     num_K = length(path.K)
     bands = zeros(Float64, num_K, length(sim.lat.tetra_sites))
@@ -363,7 +359,7 @@ function calc_spinons_along_path(output_dir;
     @Threads.threads for J=1:num_K
         bands[J,:] = begin
             try
-                spinon_dispersion(path.K[J], sim )[1]'
+                spinon_dispersion(path.K[J], sim, λ)[1]'
             catch e
                 if e isa DomainError
                     NaN*ones(Float64, 1,length(sim.lat.tetra_sites))

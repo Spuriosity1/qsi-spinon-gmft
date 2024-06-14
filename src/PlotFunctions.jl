@@ -8,10 +8,6 @@ using Printf
 include("BZMath.jl")
 #include("SpinonStructure.jl")
 
-@everywhere begin
-    using .BZmath
-    using .SpinonStructure
-end
 #=
 const kspace_points = Dict(
     "\\Gamma"=> [0.,0.,0.],
