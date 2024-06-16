@@ -214,44 +214,47 @@ function calc_integrated_specweight(
 =#
 
     prog = Progress(ip.n_K_samples, desc="BZ Average")
- 
-    Spm_res = zeros(ComplexF64, Threads.nthreads(), length(Egrid) ) 
-    Spp_res = zeros(ComplexF64, Threads.nthreads(), length(Egrid) ) 
-    Smagnetic_res = zeros(Float64, Threads.nthreads(), length(Egrid) ) 
 
-    Threads.@threads for _ = 1:ip.n_K_samples  
-        q = (1 .- 2 .*(@SVector rand(3)))*4π/8
-        p = (1 .- 2 .*(@SVector rand(3)))*4π/8
+    samples_per_trial = ip.n_K_samples ÷ Threads.nthreads()
 
-        try
-            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, λ, g_tensor)
-            
-            # race condition time
-            id = Threads.threadid()
-            Spm_res[id, :] += broadened_peaks(S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
-            Spp_res[id, :] += broadened_peaks(S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
-            Smagnetic_res[id, :] += broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
-                                         ip.broadening_dE )
-                    
-        catch e
-            if e isa DomainError
-                println("p=$(p) or p-q=$(p-q): Negative dispersion")
-            else
-                throw(e)
-            end
-        end
-        next!(prog)
-    end
     
+    function single_trial()        
+        Spm_res = zeros(ComplexF64, length(Egrid) ) 
+        Spp_res = zeros(ComplexF64, length(Egrid) ) 
+        Smagnetic_res = zeros(Float64, length(Egrid) ) 
 
+
+        for _ in 1:samples_per_trial
+            q = (1 .- 2 .*(@SVector rand(3)))*4π/8
+            p = (1 .- 2 .*(@SVector rand(3)))*4π/8
+
+            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, λ, g_tensor)
+
+            broadened_peaks!(Spm_res, S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            broadened_peaks!(Spp_res, S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            broadened_peaks!(Smagnetic_res, S_magnetic_rs::Matrix{Float64}, E_rs, Egrid, ip.broadening_dE )
+
+            next!(prog)
+        end
+        return (Spm_res, Spp_res, Smagnetic_res)
+    end
+
+    tasks = map(1:Threads.nthreads()) do chunk
+        Threads.@spawn single_trial()
+    end
+
+    chunk_sums = fetch.(tasks)
+    
     finish!(prog)
 
 
+    (Spm_res, Spp_res, Smagnetic_res) = reduce((x,y)->x.+y, chunk_sums)
+
     # add the threads' results together and save the data
     return save_SQW(output_dir, 
-                Spm=collect(sum(eachrow(Spm_res))),
-                Spp=collect(sum(eachrow(Spp_res))),
-                Smagnetic=collect(sum(eachrow(Smagnetic_res))),
+                Spm=Spm_res,
+                Spp=Spp_res,
+                Smagnetic=Smagnetic_res,
                 bounds=nothing, BZ_path=nothing, Egrid=collect(Egrid),
                 sim=sim, ip=ip, prefix="integrated")
 end
@@ -259,7 +262,7 @@ end
 
 
 
-
+#=
 # single-threaded version
 function calc_integrated_S(
     output_dir::String;
@@ -297,7 +300,7 @@ function calc_integrated_S(
 
     return Spm_res, Spp_res, Smagnetic_res
 end
-
+=#
 
 function integrated_fieldsweep(output_dir::String;
     sim_factory, # A map taking in a field strength and returning SimulationParameters
@@ -318,7 +321,7 @@ function integrated_fieldsweep(output_dir::String;
     @Threads.threads for J=1:num_B
         this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParameters
         this_λ = calc_lambda(this_sim)
-        Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(output_dir,
+        Spm_res, Spp_res, Smagnetic_res = calc_integrated_specweight(output_dir,
                                                             sim=this_sim,
                                                             λ=this_λ,
                                                             ip=ip,

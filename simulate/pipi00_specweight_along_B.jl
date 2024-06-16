@@ -42,6 +42,8 @@ function sim_factory(modB)
     end
 end
 
+
+
 f = integrated_fieldsweep(data_dir, 
                           sim_factory=sim_factory,
                           magnetic_field_strengths=collect(range(0,0.5,50)),

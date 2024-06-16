@@ -12,7 +12,7 @@ using Printf
 
 export calc_fluxes, SimulationParameters, IntegrationParameters
 export geom, calc_lambda, spinon_dispersion, spectral_weight, integrated_specweight
-export corr_at, broadened_peaks, sim_identifier
+export corr_at, broadened_peaks, broadened_peaks!, sim_identifier
 export construct_landau_gauge
 
 

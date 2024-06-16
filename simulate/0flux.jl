@@ -10,8 +10,9 @@ simlist = map(
     b->SimulationParameters("0flux",
     lattice=geom.PyroPrimitive(1,1,1),
     A=[0 0 0 0],
-    Jpm=-0.05,
-    B=b
+    Jpm=-0.04,
+    B=b,
+    n_samples=10000
     ),
     magnetic_fields);
 
@@ -22,7 +23,7 @@ for (i, sim) in enumerate(simlist)
         data_dir="output",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["very_slow"]
+        integral_params=integration_settings["slow"]
         )
 end
 

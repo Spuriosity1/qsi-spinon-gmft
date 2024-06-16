@@ -9,6 +9,7 @@ A_piflux = construct_landau_gauge(lat, [0 0 0 π; 0 π 0 π; 0 0 0 0])
 function sim_factory(modB)
     return SimulationParameters("piflux-along",
     A= A_piflux,
+    lattice=lat,
     Jpm=0.3,
     B=modB*[1.,1.,1.]/√3,
     nsample=10000,
