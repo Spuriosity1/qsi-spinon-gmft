@@ -358,8 +358,8 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
     E1, U1 = spinon_dispersion( p, sim, λ)
     E2, U2 = spinon_dispersion( q-p, sim, λ)
 
-    local W_pm = zeros(ComplexF64,4,4)
-    local W_pp = zeros(ComplexF64,4,4)
+    W_pm = zeros(ComplexF64,4,4)
+    W_pp = zeros(ComplexF64,4,4)
   
     @inbounds for μ=1:4, ν=1:4
         W_pm[μ,ν] = exp(2im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
@@ -371,12 +371,20 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
     end
 
 	
-	local QQ_tensor = diagm([1.,1.,1.]) - q*q'/(q'*q)	
+    QQ_tensor = SMatrix{3,3,Float64}(diagm([1.,1.,1.]) - q*q'/(q'*q))
 
-    local f=length(sim.lat.tetra_sites)
-    local S_pm = zeros(ComplexF64, f,f)
-    local S_pp = zeros(ComplexF64, f,f)
-    local S_magnetic = zeros(Float64, f,f)
+    f=length(sim.lat.tetra_sites)
+    S_pm = zeros(ComplexF64, f,f)
+    S_pp = zeros(ComplexF64, f,f)
+    S_magnetic = zeros(Float64, f,f)
+
+    jB =0
+    jpB=0
+    
+
+    delta_S_pm = Array{ComplexF64}(undef, f,f)
+    delta_S_pp = Array{ComplexF64}(undef, f,f)
+    
 
     A_sites = geom.A_sites(sim.lat)
     @inbounds for μ=1:4, ν=1:4
@@ -423,9 +431,11 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
 			
         end
     end
-    local E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
+    E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
     return E, S_pm, S_pp, S_magnetic
 end
+
+
 
 
 
@@ -533,7 +543,6 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
             end
             
         end
-		# TODO consider doing this in place
 
     end
     return Sqω_pm, Sqω_pp, Sqω_magnetic, bounds
