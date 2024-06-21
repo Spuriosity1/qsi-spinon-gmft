@@ -1,10 +1,3 @@
-
-using Pkg 
-Pkg.activate(joinpath(@__DIR__,"../"))
-Pkg.instantiate()
-Pkg.precompile()
-
-
 using LinearAlgebra
 using StaticArrays
 using ProgressMeter
@@ -167,13 +160,20 @@ function calc_spectral_weight_along_path(
     
     p = Progress(num_K,desc="Spectral weight: ")
 
+    tmp_intensity = Sqω_set(Egrid)
+
+
     Threads.@threads for I = 1:num_K
         k = path.K[I]*0.5
         q = SVector(k[1], k[2], k[3])
-        # hard-coded DO g-tensor
+
         try
             # no race condition here, yay
-            Spm[I, :], Spp[I, :], Smagnetic[I, :], bounds[I,:] = spectral_weight(q, Egrid, sim, λ, ip, g_tensor )
+            spectral_weight!(tmp_intensity, q, sim, λ, ip, g_tensor )
+            Spm[I, :] .= tmp_intensity.Sqω_pm
+            Spp[I, :] .= tmp_intensity.Sqω_pp
+            Smagnetic[I, :] .= tmp_intensity.Sqω_magnetic
+            bounds[I,:] .= tmp_intensity.bounds
         catch e
             if e isa DomainError
                 println("Q= $(q), negative dispersion: $(e)")
@@ -316,7 +316,6 @@ function integrated_fieldsweep(output_dir::String;
     Spp = zeros(ComplexF64, num_B, length(Egrid))
     Smagnetic = zeros(Float64, num_B, length(Egrid))
 
-    field_direction = sim.B/norm(sim.B)
     
     @Threads.threads for J=1:num_B
         this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParameters
@@ -343,7 +342,7 @@ function integrated_fieldsweep(output_dir::String;
         Smagnetic=Smagnetic,
         Egrid=Egrid,
         magnetic_field_strengths=magnetic_field_strengths,
-        sim=sim, 
+        sim=sim_factory(magnetic_field_strengths[1]), 
         ip=ip
        )
 end
