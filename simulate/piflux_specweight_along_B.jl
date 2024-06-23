@@ -27,7 +27,7 @@ data_dir="output/"
 f = integrated_fieldsweep(data_dir, 
                           sim_factory=sim_factory,
                           magnetic_field_strengths=collect(range(0,0.5,50)),
-                          ip=integration_settings["fast"],
+                          ip=integration_settings["very_slow"],
                           Egrid=Egrid, g_tensor=G
                          )
 println("Saving data to $(f)")

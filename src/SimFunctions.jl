@@ -194,9 +194,9 @@ function calc_integrated_S(
 
         try
             E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, λ, g_tensor) 
-            Spm_res += broadened_peaks(S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
-            Spp_res += broadened_peaks(S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
-            Smagnetic_res += broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
+            Spm_res .+= broadened_peaks(S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            Spp_res .+= broadened_peaks(S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            Smagnetic_res .+= broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
                                          ip.broadening_dE )
                     
         catch e
@@ -237,9 +237,10 @@ function integrated_fieldsweep(output_dir::String;
                                                             Egrid=Egrid,
                                                             g_tensor=g_tensor
                                                            )
-        Spm[J,:] = Spm_res
-        Spp[J,:] = Spp_res
-        Smagnetic[J,:] = Smagnetic_res
+
+        Spm[J,:] .= Spm_res::Vector{ComplexF64}
+        Spp[J,:] .= Spp_res::Vector{ComplexF64}
+        Smagnetic[J,:] .= Smagnetic_res::Vector{Float64}
 
         next!(prog)
     end
