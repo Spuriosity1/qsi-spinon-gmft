@@ -160,6 +160,9 @@ function calc_spectral_weight_along_path(
     
     p = Progress(num_K,desc="Spectral weight: ")
 
+    tmp_intensity = Sqω_set(Egrid)
+
+
     Threads.@threads for I = 1:num_K
         k = path.K[I]*0.5
         q = SVector(k[1], k[2], k[3])
@@ -314,8 +317,8 @@ function integrated_fieldsweep(output_dir::String;
 
     
     @Threads.threads for J=1:num_B
-        this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParameters
-        this_λ = calc_lambda(this_sim)
+        this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParameters,
+        this_λ = calc_lambda(this_sim),
         Spm_res, Spp_res, Smagnetic_res = calc_integrated_specweight(output_dir,
                                                             sim=this_sim,
                                                             λ=this_λ,
