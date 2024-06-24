@@ -1,9 +1,8 @@
-include("driver-distributed.jl")
+include("driver-headless.jl")
 
 
 magnetic_fields = [
-    [0,0,0],
-    [1,1,1]*0.1/√3, [0,1,1]*0.1/√2,
+    [0,0,0]
     ]
 
 simlist = map(
@@ -20,10 +19,10 @@ simlist = map(
 for (i, sim) in enumerate(simlist)
     @printf("Running simulation %d of %d\n", i, length(simlist))
     run_sim(
-        data_dir="output",
+        data_dir="tmp",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["very_fast"]
+        integral_params=integration_settings["fast"]
         )
 end
 
