@@ -12,7 +12,7 @@ function sim_factory(modB)
     lattice=lat,
     Jpm=0.3,
     B=modB*[1.,1.,1.]/√3,
-    nsample=10000,
+    n_samples=10000,
     kappa=2.0
     )
 end

@@ -11,7 +11,8 @@ using ProgressMeter
 using Printf
 
 export calc_fluxes, SimulationParameters, IntegrationParameters
-export geom, calc_lambda, spinon_dispersion, spectral_weight, integrated_specweight
+export geom, calc_lambda, spinon_dispersion, spectral_weight, spectral_weight!
+export integrated_specweight, Sqω_set
 export corr_at, broadened_peaks, broadened_peaks!, sim_identifier
 export construct_landau_gauge
 
@@ -340,6 +341,7 @@ end
     return N*1. * Γ/(x^2 + Γ^2)
 end
 
+
 """
 	corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
 	-> E, Spm, Spp, Smagnetic
@@ -351,32 +353,28 @@ Returns:
 `Spm`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S-(-k,0)>
 `Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
 """
-function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
+@inline function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
         λ::Float64,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
     E1, U1 = spinon_dispersion( p, sim, λ)
     E2, U2 = spinon_dispersion( q-p, sim, λ)
 
-    local W_pm = zeros(ComplexF64,4,4)
-    local W_pp = zeros(ComplexF64,4,4)
-  
-    @inbounds for μ=1:4, ν=1:4
-        W_pm[μ,ν] = exp(2im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
-
-        W_pp[μ,ν] = begin
-            exp(2im*(q/2)'* (geom.pyro[μ]-geom.pyro[ν]))*
-            exp(-2im*(p)'* (geom.pyro[μ]+geom.pyro[ν]))
-        end		
-    end
-
 	
-	local QQ_tensor = diagm([1.,1.,1.]) - q*q'/(q'*q)	
+    QQ_tensor = SMatrix{3,3,Float64}(diagm([1.,1.,1.]) - q*q'/(q'*q))
 
-    local f=length(sim.lat.tetra_sites)
-    local S_pm = zeros(ComplexF64, f,f)
-    local S_pp = zeros(ComplexF64, f,f)
-    local S_magnetic = zeros(Float64, f,f)
+    f=length(sim.lat.tetra_sites)
+    S_pm = zeros(ComplexF64, f,f)
+    S_pp = zeros(ComplexF64, f,f)
+    S_magnetic = zeros(Float64, f,f)
+
+    jB =0
+    jpB=0
+    
+
+    delta_S_pm = Array{ComplexF64}(undef, f,f)
+    delta_S_pp = Array{ComplexF64}(undef, f,f)
+    
 
     A_sites = geom.A_sites(sim.lat)
     @inbounds for μ=1:4, ν=1:4
@@ -390,8 +388,10 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
             # the "l'" bit
             x2 = conj(U2[jpB, :]) .* U2[jB, :] ./ (2*E2) 
                     
-            delta_S_pm = W_pm[μ,ν]*exp(1im*(sim.A[jA,μ]-sim.A[jpA, ν])) * x1*x2'
-			S_pm += delta_S_pm
+            delta_S_pm = (
+                exp(2im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
+                )*exp(1im*(sim.A[jA,μ]-sim.A[jpA, ν])) * x1*x2'
+			S_pm .+= delta_S_pm
 			
 			# <S+ S+>
             # the "l" bit
@@ -399,8 +399,11 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
             # the "l'" bit
             x4 = U2[jpA, :] .* conj(U2[jB, :]) ./ (2*E2)
 
-            delta_S_pp = W_pp[μ,ν]*exp(1im*(sim.A[jA,μ]+sim.A[jpA, ν])) * x3*x4'
-			S_pp += delta_S_pp
+            delta_S_pp = (
+                exp(2im*(q/2)'* (geom.pyro[μ]-geom.pyro[ν]))*
+                exp(-2im*(p)'* (geom.pyro[μ]+geom.pyro[ν]))
+                )*exp(1im*(sim.A[jA,μ]+sim.A[jpA, ν])) * x3*x4'
+			S_pp .+= delta_S_pp
 
 
 			if g_tensor != nothing
@@ -413,19 +416,21 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
 				R1 = g_tensor * geom.axis[μ]
 				R2 = g_tensor * geom.axis[ν]
 
-				S_magnetic +=  R1[:,1]' * QQ_tensor * R2[:,1] .* delta_S_xx
-				S_magnetic +=  R1[:,1]' * QQ_tensor * R2[:,2] .* delta_S_xy
-				S_magnetic +=  R1[:,2]' * QQ_tensor * R2[:,1] .* delta_S_yx
-				S_magnetic +=  R1[:,2]' * QQ_tensor * R2[:,2] .* delta_S_yy
+				S_magnetic .+=  R1[:,1]' * QQ_tensor * R2[:,1] .* delta_S_xx
+				S_magnetic .+=  R1[:,1]' * QQ_tensor * R2[:,2] .* delta_S_xy
+				S_magnetic .+=  R1[:,2]' * QQ_tensor * R2[:,1] .* delta_S_yx
+				S_magnetic .+=  R1[:,2]' * QQ_tensor * R2[:,2] .* delta_S_yy
 	
 
 			end
 			
         end
     end
-    local E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
+    E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
     return E, S_pm, S_pp, S_magnetic
 end
+
+
 
 
 
@@ -460,6 +465,29 @@ function broadened_peaks(
 		])		
 end
 
+mutable struct Sqω_set
+    Sqω_pm::Vector{ComplexF64}
+    Sqω_pp::Vector{ComplexF64}
+    Sqω_magnetic::Vector{Float64}
+    Egrid::Vector{Float64}
+    bounds::Vector{Float64}
+
+    function Sqω_set(Egrid::Vector{Float64})
+        Sqω_pm       = similar(Egrid, ComplexF64)
+        Sqω_pp       = similar(Egrid, ComplexF64)
+        Sqω_magnetic = similar(Egrid, Float64)        
+
+        new(Sqω_pm, Sqω_pp, Sqω_magnetic, Egrid,[Inf, -Inf])
+    end
+end
+
+function initzeros!(intensity::Sqω_set)
+    intensity.Sqω_pm .= 0
+    intensity.Sqω_pp .= 0
+    intensity.Sqω_magnetic .= 0
+
+    intensity.bounds = [Inf, -Inf]
+end
 
 
 """
@@ -484,23 +512,26 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
 	sim::SimulationParameters, λ::Float64,
     integral_params::IntegrationParameters,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
+    
+    intensity = Sqω_set(Egrid)
+ 
+    spectral_weight!(intensity, 
+        q, sim, λ, integral_params, g_tensor)
 
 
+    return intensity
+end
 
-
+function spectral_weight!(
+    intensity::Sqω_set,
+    q::Vec3_F64, 
+	sim::SimulationParameters, λ::Float64,
+    integral_params::IntegrationParameters,
+	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
     # cursed Monte Carlo integration
 
-    bounds = [Inf, -Inf]
+    initzeros!(intensity) 
 
-	Sqω_pm       = similar(Egrid, ComplexF64)
-	Sqω_pp       = similar(Egrid, ComplexF64)
-	Sqω_magnetic = similar(Egrid, Float64)
-
-	Sqω_pm       .= 0 
-	Sqω_pp       .= 0 
-	Sqω_magnetic .= 0 
-
-    
     for _ = 1:integral_params.n_K_samples 
         p = (1 .- 2 .*(@SVector rand(3)))*2π
 		#overkill but definitely not too small
@@ -512,18 +543,18 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
         try
             E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, λ, g_tensor)
 
-            broadened_peaks!(Sqω_pm,  S_pm_rs, E_rs, Egrid, integral_params.broadening_dE )
-            broadened_peaks!(Sqω_pp,  S_pp_rs, E_rs, Egrid, integral_params.broadening_dE )
+            broadened_peaks!(intensity.Sqω_pm,  S_pm_rs, E_rs, intensity.Egrid, integral_params.broadening_dE )
+            broadened_peaks!(intensity.Sqω_pp,  S_pp_rs, E_rs, intensity.Egrid, integral_params.broadening_dE )
 
 
             if g_tensor != nothing
-                broadened_peaks!(Sqω_magnetic, S_magnetic_rs, E_rs, Egrid, 
+                broadened_peaks!(intensity.Sqω_magnetic, S_magnetic_rs, E_rs, intensity.Egrid, 
                                  integral_params.broadening_dE )
 
             end	
 
-            bounds[1] = min(bounds[1], reduce(min,  E_rs) ) 
-            bounds[2] = max(bounds[2], reduce(max,  E_rs) )
+            intensity.bounds[1] = min(intensity.bounds[1], reduce(min,  E_rs) ) 
+            intensity.bounds[2] = max(intensity.bounds[2], reduce(max,  E_rs) )
         catch e
             if e isa DomainError
                 println("Negative dispersion at q=$(q), p=$(p)")
@@ -533,10 +564,8 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
             end
             
         end
-		# TODO consider doing this in place
 
     end
-    return Sqω_pm, Sqω_pp, Sqω_magnetic, bounds
 end
 
 """
