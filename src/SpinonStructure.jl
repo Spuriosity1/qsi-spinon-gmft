@@ -353,7 +353,7 @@ Returns:
 `Spm`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S-(-k,0)>
 `Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
 """
-@inline function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
+function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
         λ::Float64,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
