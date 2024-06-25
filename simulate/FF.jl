@@ -49,7 +49,7 @@ function sim_factory(N::Int, Jpm::Float64)
     Φ0 = abs(mean_fluxes[1])
     println("$(N) -> phi = $(Φ0)")
 
-    return SimulationParameters("TEST_FF",
+    return SimulationParameters("FF",
         A=A_FF, 
         lattice=lat,
         Jpm=Jpm,
@@ -60,11 +60,11 @@ function sim_factory(N::Int, Jpm::Float64)
 end
 
 
-Jpm = -0.05
+Jpm = -0.04
 
 simlist = map(
 N->sim_factory(N, Jpm),
-    [2,3,4,5]
+    [2,3,4]
 )
 
 
@@ -74,7 +74,7 @@ for (i, sim) in enumerate(simlist)
         data_dir="output/",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["very_fast"],
+        integral_params=integration_settings["fast"],
         k_density_spinon_dispersion=20,
         k_density_specweight=5
         )
