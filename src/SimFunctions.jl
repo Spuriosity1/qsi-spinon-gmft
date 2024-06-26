@@ -261,7 +261,7 @@ end
 
 
 
-#=
+
 # single-threaded version
 function calc_integrated_S(
     output_dir::String;
@@ -299,7 +299,7 @@ function calc_integrated_S(
 
     return Spm_res, Spp_res, Smagnetic_res
 end
-=#
+
 
 function integrated_fieldsweep(output_dir::String;
     sim_factory, # A map taking in a field strength and returning SimulationParameters
@@ -319,7 +319,7 @@ function integrated_fieldsweep(output_dir::String;
     @Threads.threads for J=1:num_B
         this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParameters
         this_λ = calc_lambda(this_sim)
-        Spm_res, Spp_res, Smagnetic_res = calc_integrated_specweight(output_dir,
+        Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(output_dir,
                                                             sim=this_sim,
                                                             λ=this_λ,
                                                             ip=ip,

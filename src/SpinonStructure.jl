@@ -436,8 +436,8 @@ end
 
 # puts Lorentzians of weights Snm at energies Enm
 function broadened_peaks!(
-	Sqω::Union{Vector{ComplexF64}, Vector{Float64}},
-	Snm::Union{Matrix{ComplexF64}, Matrix{Float64}},
+	Sqω::Vector{Float64},
+	Snm::Matrix{Float64},
 	Enm::Matrix{Float64},
 	Egrid::Vector{Float64},
 	dE::Float64
@@ -449,6 +449,23 @@ function broadened_peaks!(
 		end
 	end
 end
+
+
+function broadened_peaks!(
+	Sqω::Vector{ComplexF64},
+	Snm::Matrix{ComplexF64},
+	Enm::Matrix{Float64},
+	Egrid::Vector{Float64},
+	dE::Float64
+	)
+
+	for (E,S) in zip(Enm,Snm)
+		for (i,e) in enumerate(Egrid)
+			Sqω[i] += S*Lorentzian(e-E, dE)
+		end
+	end
+end
+
 
 
 # puts Lorentzians of weights Snm at energies Enm
