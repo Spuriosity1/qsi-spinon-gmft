@@ -23,7 +23,7 @@ for (i, sim) in enumerate(simlist)
         data_dir="output",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["slow"]
+        integral_params=integration_settings["ultra_slow"]
         )
 end
 
