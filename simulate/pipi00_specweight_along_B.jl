@@ -7,7 +7,7 @@ Jpm = -0.04
 
 Bmin =sqrt(-9*Jpm/5)
 
-name="TEST_mix_pipi00"
+name="mix_pipi00"
 
 
 G = @SMatrix [0. 0. 0.;
