@@ -387,5 +387,6 @@ const integration_settings = Dict(
     "fast" =>   IntegrationParameters(n_K_samples=100,  broadening_dE=0.05),
     "slow" =>      IntegrationParameters(n_K_samples=1000, broadening_dE=0.02),
     "very_slow" => IntegrationParameters(n_K_samples=10000,broadening_dE=0.02)
+    "ultra_slow" => IntegrationParameters(n_K_samples=100000,broadening_dE=0.02)
 )
 
