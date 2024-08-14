@@ -164,7 +164,7 @@ function calc_spectral_weight_along_path(
 
 
     Threads.@threads for I = 1:num_K
-        k = path.K[I]*0.5
+        k = path.K[I]
         q = SVector(k[1], k[2], k[3])
 
         try

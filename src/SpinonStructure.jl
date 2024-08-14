@@ -16,6 +16,8 @@ export integrated_specweight, Sqω_set
 export corr_at, broadened_peaks, broadened_peaks!, sim_identifier
 export construct_landau_gauge
 
+# this file implements the basic spinon operations.
+
 
 # The thread switching this does is not desirable at all
 LinearAlgebra.BLAS.set_num_threads(1)
@@ -118,8 +120,9 @@ $$
     H = zeros(ComplexF64, length(sim.lat.tetra_sites), length(sim.lat.tetra_sites))
     
     # the nearst neighbour (magnetic) hoppings
-    @inbounds for (J0, x0) in enumerate(geom.A_sites(sim.lat))
-        @inbounds for mu = 1:4
+    @inbounds begin
+    for (J0, x0) in enumerate(geom.A_sites(sim.lat))
+        for mu = 1:4
             x1 = x0 + 2*geom.pyro[mu]
             J1 = geom.tetra_idx(sim.lat, x1)
 
@@ -128,9 +131,11 @@ $$
             H[J1, J0] += conj(hh)
         end
     end
+    end
     
     return H
 end
+
 
 
 raw"""
@@ -145,7 +150,6 @@ $$
 e^{i\eta_x(A_{r,r+\nu}-A_{r,r+\mu})} 
 $$
 """
-# @inline function calc_xxz_hopping_fast(lat::geom.PyroGeneric, K::Vec3_F64, A::Matrix{Float64})
 @inline function calc_xxz_hopping_fast(sim::SimulationParameters, K::Vec3_F64)
     #=
     Calculates the next-neighbour hoppings due to the XXZ like $S^+S^-$ terms, with Jpm = 1.
@@ -154,13 +158,15 @@ $$
     H = zeros(ComplexF64, length(sim.lat.tetra_sites), length(sim.lat.tetra_sites))
     A_sites = geom.A_sites(sim.lat)
     
+    @inbounds begin
+        
     for (J0, x0) in enumerate(A_sites)
         # the A sites
-        @inbounds for mu = 1:4
+        for mu = 1:4
             x1 = x0 + 2*geom.pyro[mu]
             J1 = geom.tetra_idx(sim.lat, x1)
                 
-            @inbounds for nu = (mu+1):4
+            for nu = (mu+1):4
                 x2 = x0 + 2*geom.pyro[nu]
                 J2 = geom.tetra_idx(sim.lat, x2)
 
@@ -174,11 +180,11 @@ $$
         x0 += @SVector [2,2,2]
         J0 += length(A_sites)
         # @assert J0 == tetra_idx(lat, x0) 
-        @inbounds for mu = 1:4
+        for mu = 1:4
             x1 = x0 - 2*geom.pyro[mu]
             J1 = geom.tetra_idx(sim.lat, x1)
                 
-            @inbounds for nu = mu+1:4
+            for nu = mu+1:4
                 x2 = x0 - 2*geom.pyro[nu]
                 J2 = geom.tetra_idx(sim.lat, x2)
                 z= 1/4*exp(1.0im*(-sim.A[J1,mu] + sim.A[J2,nu]) - 1.0im*K'*(x1-x2))
@@ -188,10 +194,55 @@ $$
         end
         
     end
+    end
 
     return H*sim.Jpm
 end
 
+
+
+#=
+struct XXZspec
+    C::ComplexF64
+    deltaX::SVector{3, Float64}
+end
+
+struct OnsiteSpec
+    C::ComplexF64
+    deltaX::SVector{3, Float64}
+end
+
+
+struct CompiledModel
+    sim::SimulationParameters
+    # sparse matrix of pairs [C, x1-x2] such that H_xxz[J1, J2] = C * exp(1.0im*K*(x1-x2)
+    nearest_neighbours::SparseM{XXZspec}
+    # sparse matrix of pairs [C, x1-x2] such that H_xxz[J1, J2] = C * exp(1.0im*K*(x1-x2)
+    second_nearest_neighbours::Matrix{OnsiteSpec}
+    n_tetra::Int # number of tetra sites, equivalent to length(sim.lat.tetra_sites)
+     
+end
+
+
+function compile_model(sim::SimulationParameters)
+    # produces an intermediate model with all of the site indices precomputed
+    # in retrospect not doing this from the get-go was real dumb
+    
+
+end
+
+@inline function calc_xxz_hopping_fast(model::CompiledModel, K::Vec3_F64)
+    #=
+    Calculates the next-neighbour hoppings due to the XXZ like $S^+S^-$ terms, with Jpm = 1.
+    =#
+    H = sparse(zeros(ComplexF64, length(model.sim.lat.tetra_sites), length(model.sim.lat.tetra_sites)))
+    
+    for I=1:model.n_tetra
+
+    return H*model.sim.Jpm
+end
+
+=#
 
 raw"""
 	diagonalise_M(sim, K)
@@ -550,7 +601,7 @@ function spectral_weight!(
     initzeros!(intensity) 
 
     for _ = 1:integral_params.n_K_samples 
-        p = (1 .- 2 .*(@SVector rand(3)))*2π
+        p = (1 .- 2 .*(@SVector rand(3)))*π
 		#overkill but definitely not too small
 		
 		# notation: 
