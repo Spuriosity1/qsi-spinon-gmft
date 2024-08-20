@@ -1,20 +1,29 @@
 module SpinonStructure
+"""
+Author: Alaric Sanders
+Date: 2024-08-14
+
+This module encodes the "physics" part of the code, all other files
+    are drivers for confenience.
+"""
 
 include("PyrochloreGeometry.jl")
 import .PyrochloreGeometry as geom
 import CSV
 using StaticArrays
 using LinearAlgebra
+using SparseArrays
 using Roots
 using Optim
 using ProgressMeter
 using Printf
 
-export calc_fluxes, SimulationParameters, IntegrationParameters
+export calc_fluxes, SimulationParameters, IntegrationParameters, CompiledModel
 export geom, calc_lambda, spinon_dispersion, spectral_weight, spectral_weight!
-export integrated_specweight, Sqω_set
+export Sqω_set
 export corr_at, broadened_peaks, broadened_peaks!, sim_identifier
 export construct_landau_gauge
+export lattice_gradient, global_gauge
 
 # this file implements the basic spinon operations.
 
@@ -70,6 +79,71 @@ struct SimulationParameters
 end
 
 
+abstract type AbstractCompiledHamiltonian end
+
+
+"""
+    CompiledHamiltonian
+Members:
+    sim::SimulationParameters
+
+    A sparse matrix of pairs [C, x1-x2] such that the upper diagonal part of H[J1, J2] = C * exp(1.0im*K*(x1-x2)
+    coeff_I::Array{Int64}
+    coeff_J::Array{Int64}
+    coeff_C::Array{ComplexF64}
+    coeff_delta::Matrix{Float64}
+ 
+    # the selfconsistent spinon mass
+    lambda::Float64
+"""
+struct CompiledHamiltonian <: AbstractCompiledHamiltonian
+    sim::SimulationParameters
+    # sparse matrix of pairs [C, x1-x2] such that the upper diagonal part of H[J1, J2] = C * exp(1.0im*K*(x1-x2)
+    coeff_I::Array{Int64}
+    coeff_J::Array{Int64}
+    coeff_C::Array{ComplexF64}
+    coeff_delta::Matrix{Float64}
+
+    
+    function CompiledHamiltonian(_sim::SimulationParameters)
+        I = Int64[]
+        J = Int64[]
+        C = ComplexF64[]
+        delta = SVector{3, Float64}[]
+
+        compile_XXZ!(_sim, I, J, C, delta)
+        compile_Sx!(_sim, I, J, C, delta)
+
+        new(_sim, I, J, C, reduce(hcat, delta))
+    end
+end
+
+
+
+
+struct CompiledModel <: AbstractCompiledHamiltonian
+    sim::SimulationParameters
+    coeff_I::Array{Int64}
+    coeff_J::Array{Int64}
+    coeff_C::Array{ComplexF64}
+    coeff_delta::Matrix{Float64}
+
+    #the selfconsistent spinon mass
+    lambda::Float64
+    function CompiledModel(_sim::SimulationParameters)
+        cm = CompiledHamiltonian(_sim)
+        new(
+            _sim,
+            cm.coeff_I,
+            cm.coeff_J,
+            cm.coeff_C,
+            cm.coeff_delta,
+            calc_lambda(cm)
+            )
+    end
+end
+
+
 """
 	calc_fluxes(lattice::geom.PyroGeneric, A)
 
@@ -110,7 +184,7 @@ $$
 -\sum_{r_A, \mu} \frac{\boldsymbol{\hat{z}}_\mu \cdot \boldsymbol{B}}{4} \left[ \phi_{r_A}^+ e^{iA_{r_A, r_A+b_\mu} } \phi_{r_A + b_\mu}^-  + h.c.\right]
 $$
 """
-# @inline function calc_nn_hopping(lat::geom.PyroGeneric, K::Vec3_F64, A::Matrix{Float64}, B::Union{Vector{Float64},Vec3_F64})
+#=
 @inline function calc_nn_hopping(sim::SimulationParameters, K::Vec3_F64)
     #=
     Calculates the nearest-neighbour hopping matrix elements due to applied magnetic field.
@@ -135,9 +209,9 @@ $$
     
     return H
 end
+=#
 
-
-
+#=
 raw"""
 	calc_xxz_hopping_fast(sim , K)
 	-> H_xxz
@@ -198,52 +272,8 @@ $$
 
     return H*sim.Jpm
 end
-
-
-
-#=
-struct XXZspec
-    C::ComplexF64
-    deltaX::SVector{3, Float64}
-end
-
-struct OnsiteSpec
-    C::ComplexF64
-    deltaX::SVector{3, Float64}
-end
-
-
-struct CompiledModel
-    sim::SimulationParameters
-    # sparse matrix of pairs [C, x1-x2] such that H_xxz[J1, J2] = C * exp(1.0im*K*(x1-x2)
-    nearest_neighbours::SparseM{XXZspec}
-    # sparse matrix of pairs [C, x1-x2] such that H_xxz[J1, J2] = C * exp(1.0im*K*(x1-x2)
-    second_nearest_neighbours::Matrix{OnsiteSpec}
-    n_tetra::Int # number of tetra sites, equivalent to length(sim.lat.tetra_sites)
-     
-end
-
-
-function compile_model(sim::SimulationParameters)
-    # produces an intermediate model with all of the site indices precomputed
-    # in retrospect not doing this from the get-go was real dumb
-    
-
-end
-
-@inline function calc_xxz_hopping_fast(model::CompiledModel, K::Vec3_F64)
-    #=
-    Calculates the next-neighbour hoppings due to the XXZ like $S^+S^-$ terms, with Jpm = 1.
-    =#
-    H = sparse(zeros(ComplexF64, length(model.sim.lat.tetra_sites), length(model.sim.lat.tetra_sites)))
-    
-    for I=1:model.n_tetra
-
-    return H*model.sim.Jpm
-end
-
 =#
-
+#=
 raw"""
 	diagonalise_M(sim, K)
 	-> epsilon, U
@@ -258,22 +288,39 @@ nearest-neighbour and second-neighbour hoppings.
     - U,   a [M, num_tetra, num_tetra] list of eigenvectors such that H[J] @ U[J] =  U[J] @ diag(eps[J])
 """
 function diagonalise_M(sim::SimulationParameters, K::Vec3_F64)
-
-    
     H = calc_xxz_hopping_fast(sim, K) + calc_nn_hopping(sim, K)
-
     @assert norm(H - H') < 1e-10
-    
     eps, U = eigen!(H)
-    
-    
     return eps, U
 end
+=#
+
+
+raw"""
+	diagonalise_M(csim, K)
+	-> epsilon, U
+
+diagonalises the hopping matrix M, given by the sum of the 
+nearest-neighbour and second-neighbour hoppings.
+    - K is a k-space point
+    - csim is a set of compiled simulation parameters
+
+    Returns:
+    - eps, a [M, num_tetra] list of sorted energies
+    - U,   a [M, num_tetra, num_tetra] list of eigenvectors such that H[J] @ U[J] =  U[J] @ diag(eps[J])
+"""
+function diagonalise_M(sim::AbstractCompiledHamiltonian, K::Vec3_F64)
+    H = calc_hopping(sim, K) 
+    @assert norm(H - H') < 1e-10 
+    return eigen!(Matrix(H))
+end
+
+    
 
 
 
 raw"""
-	calc_lambda(sim::SimulationParameters, nsample, kappa=1)
+	calc_lambda(sim::AbstractCompiledHamiltonian, nsample, kappa=1)
 	-> lambda
 
 Calculates a "chemical potential" lambda that satisfies the averaged self-
@@ -285,18 +332,18 @@ and eigenvector matrix. (The eigenvectors are not used)
 
 The integral is done using Monte Carlo, samples "nsample" times.
 """
-function calc_lambda(sim::SimulationParameters)
-    K = [ 2π*( (@SVector rand(Float64,  3 )) .-0.5) for _ in 1:sim.n_samples ]
+function calc_lambda(csim::AbstractCompiledHamiltonian)
+    K = [ geom.primitive_recip_basis * ( 2 .*(@SVector rand(Float64,  3 )) .- 1) for _ in 1:csim.sim.n_samples ]
     
-    eps = reduce(vcat, map(k->diagonalise_M(sim, k)[1], K)')
+    eps = reduce(vcat, map(k->diagonalise_M(csim, k).values, K)')
 
     min_lam = -minimum(eps)
-    bandwidth = maximum(eps) + min_lam
+    #bandwidth = maximum(eps) + min_lam
 
-    max_lam = sim.kappa^(-2) /2 - minimum(eps)
+    max_lam = csim.sim.kappa^(-2) /2 - minimum(eps)
     
     function constr(λ)
-        return sum( (eps .+ λ).^-0.5)/length(eps)/sqrt(2) - sim.kappa
+        return sum( (eps .+ λ).^-0.5)/length(eps)/sqrt(2) - csim.sim.kappa
     end
 
     # function constr_p(λ)
@@ -305,6 +352,7 @@ function calc_lambda(sim::SimulationParameters)
     # print(constr(min_lam), constr(max_lam))
     return find_zero(constr, (min_lam, max_lam),Bisection(), naive=true)
 end
+
 
 
 # function min_lambda(A::Matrix{Float64}, Jpm::Float64, 
@@ -342,24 +390,39 @@ function sim_identifier(sim::SimulationParameters)
 end
 
 """
-	spinon_dispersion(k, sim, λ)
+	spinon_dispersion(k, sim::SimulationParameters, λ)
+	-> E, U
+
+	spinon_dispersion(k, csim::AbstractCompiledHamiltonian)
 	-> E, U
 
 Calculates the spinon bands at reciprocal-space point `k` for the given 
 parameters. E and U are respectively the spinon energies and the eigenvectors
 of the hopping matrix.
+
+k -> either SVector{3,Float64} or Vector{Float64}
+
+Returns U such that 
 """
-function spinon_dispersion(k::Vec3_F64, sim::SimulationParameters, λ::Float64)
+function spinon_dispersion(k::Vec3_F64, sim::AbstractCompiledHamiltonian, λ::Float64)
     ϵ, U = diagonalise_M(sim, k)
-    # if minimum(ϵ.+ sim.λ ) < 0
-    #     println("gap closing found near k = $(k)")
-    # end
     return sqrt.(2*(ϵ.+ λ )), U
 end
 
-function spinon_dispersion(k::Vector{Float64}, sim::SimulationParameters, λ::Float64)
+function spinon_dispersion(k::Vector{Float64}, sim::AbstractCompiledHamiltonian, λ::Float64)
     ϵ, U = diagonalise_M(sim, SVector{3,Float64}(k))
     return sqrt.(2*(ϵ.+ λ )), U
+end
+
+function spinon_dispersion(k::Vec3_F64, sim::CompiledModel)
+    ϵ, U = diagonalise_M(sim, k)
+    return sqrt.(2*(ϵ.+ sim.lambda )), U
+end
+
+
+function spinon_dispersion(k::Vector{Float64}, sim::CompiledModel)
+    ϵ, U = diagonalise_M(sim, SVector{3,Float64}(k))
+    return sqrt.(2*(ϵ.+ sim.lambda )), U
 end
 
 
@@ -394,8 +457,10 @@ end
 
 
 """
-	corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters)
+```
+	corr_at(q::Vec3_F64, p::Vec3_F64, sim::AbstractCompiledHamiltonian)
 	-> E, Spm, Spp, Smagnetic
+```
 
 Calculates the contribution of kspace points(q ± p) to the p integral in 
 `corr_Spm`, meaning <S+ S->. Let there be N tetrahedra in `sim`, i.e. N bands.
@@ -404,17 +469,21 @@ Returns:
 `Spm`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S-(-k,0)>
 `Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
 """
-function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
-        λ::Float64,
+function corr_at(q::Vec3_F64, p::Vec3_F64, csim::CompiledModel,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
-    E1, U1 = spinon_dispersion( p, sim, λ)
-    E2, U2 = spinon_dispersion( q-p, sim, λ)
+    E1, U1 = spinon_dispersion( p, csim)
+    # ORIGINAL (does it actually make sense? NO!)
+    # E2, U2 = spinon_dispersion( q-p, csim)
+    # NEW ( probably right )
+    E2, U2 = spinon_dispersion( p-q, csim)
+    # Both p's must appear with the same sign, or else we break p-> p + delta 
+    # invariance (required by gauge symmetry)
 
 	
     QQ_tensor = SMatrix{3,3,Float64}(diagm([1.,1.,1.]) - q*q'/(q'*q))
 
-    f=length(sim.lat.tetra_sites)
+    f=length(csim.sim.lat.tetra_sites)
     S_pm = zeros(ComplexF64, f,f)
     S_pp = zeros(ComplexF64, f,f)
     S_magnetic = zeros(Float64, f,f)
@@ -424,41 +493,44 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
     
 
     delta_S_pm = Array{ComplexF64}(undef, f,f)
-    delta_S_pp = Array{ComplexF64}(undef, f,f)
+    # delta_S_pp = Array{ComplexF64}(undef, f,f)
     
 
-    A_sites = geom.A_sites(sim.lat)
-    @inbounds for μ=1:4, ν=1:4
+    A_sites = geom.A_sites(csim.sim.lat)
+    for μ=1:4, ν=1:4
         for (jA, rA) in enumerate(A_sites), (jpA, rpA) in enumerate(A_sites)
-            jB = geom.tetra_idx(sim.lat, rA + 2*geom.pyro[μ])::Int
-            jpB = geom.tetra_idx(sim.lat, rpA + 2*geom.pyro[ν])::Int
+            jB = geom.tetra_idx(csim.sim.lat, rA + 2*geom.pyro[μ])::Int
+            jpB = geom.tetra_idx(csim.sim.lat, rpA + 2*geom.pyro[ν])::Int
 
 			# <S+ S->
             # the "l" bit
-            x1 = U1[jA, :] .* conj(U1[jpA, :]) ./ (2*E1) 
+            x1 = U1[jA, :] .* conj.(U1[jpA, :]) ./ (2*E1) 
             # the "l'" bit
-            x2 = conj(U2[jpB, :]) .* U2[jB, :] ./ (2*E2) 
-                    
+            # Conjugating this seems to make no difference in XXZ model
+            x2 = U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
+            
+
+            # Have checked all signs here, ANY change breaks gauge invariance
+            # (bad)
             delta_S_pm = (
-                exp(2im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
-                )*exp(1im*(sim.A[jA,μ]-sim.A[jpA, ν])) * x1*x2'
+                exp(1im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
+                )*exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν])) * x1*transpose(x2)
 			S_pm .+= delta_S_pm
-			
+		
+#=
 			# <S+ S+>
             # the "l" bit
             x3 = U1[jA, :] .* conj(U1[jpB, :]) ./ (2*E1) 
             # the "l'" bit
             x4 = U2[jpA, :] .* conj(U2[jB, :]) ./ (2*E2)
-
             delta_S_pp = (
                 exp(2im*(q/2)'* (geom.pyro[μ]-geom.pyro[ν]))*
                 exp(-2im*(p)'* (geom.pyro[μ]+geom.pyro[ν]))
-                )*exp(1im*(sim.A[jA,μ]+sim.A[jpA, ν])) * x3*x4'
+                )*exp(1im*(csim.sim.A[jA,μ]+csim.sim.A[jpA, ν])) * x3*x4'
 			S_pp .+= delta_S_pp
 
 
-			if g_tensor != nothing
-
+			if g_tensor !== nothing
 				delta_S_xx =  0.5*real.(delta_S_pp .+ delta_S_pm)
 				delta_S_xy =  0.5*imag.(delta_S_pp .- delta_S_pm)
 				delta_S_yx =  0.5*imag.(delta_S_pp .+ delta_S_pm)
@@ -471,10 +543,8 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, sim::SimulationParameters,
 				S_magnetic .+=  R1[:,1]' * QQ_tensor * R2[:,2] .* delta_S_xy
 				S_magnetic .+=  R1[:,2]' * QQ_tensor * R2[:,1] .* delta_S_yx
 				S_magnetic .+=  R1[:,2]' * QQ_tensor * R2[:,2] .* delta_S_yy
-	
-
 			end
-			
+=#			
         end
     end
     E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
@@ -559,7 +629,7 @@ end
 
 
 """
-spectral_weight(q, Egrid, sim::SimulationParameters,
+spectral_weight(q, Egrid, sim::CompiledModel,
 integral_params::IntegrationParameters)
 
 Calculates the spectral weight at point `q`.
@@ -577,45 +647,54 @@ This performs a Monte Carlo integral of the spin-spin correlators <S+S-> and
 
 """
 function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
-	sim::SimulationParameters, λ::Float64,
+	csim::CompiledModel,
     integral_params::IntegrationParameters,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
     
     intensity = Sqω_set(Egrid)
  
     spectral_weight!(intensity, 
-        q, sim, λ, integral_params, g_tensor)
+        q, csim, integral_params, g_tensor)
 
 
     return intensity
 end
 
+using JLD
+const rdata = eachrow(load("rdata.jld")["content"])
+
 function spectral_weight!(
     intensity::Sqω_set,
     q::Vec3_F64, 
-	sim::SimulationParameters, λ::Float64,
+	csim::CompiledModel,
     integral_params::IntegrationParameters,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
     # cursed Monte Carlo integration
 
     initzeros!(intensity) 
+    
 
-    for _ = 1:integral_params.n_K_samples 
-        p = (1 .- 2 .*(@SVector rand(3)))*π
-		#overkill but definitely not too small
+    for idx = 1:integral_params.n_K_samples 
+        # p = geom.primitive_recip_basis *(1000* SVector{3}(rand(3)) .- 500)
+        # experimental
+         p = geom.primitive_recip_basis * (2 .*SVector{3}(rand(3)) .- 1)
+        # p = SVector{3}(rand(3))*4π
+        #
+        # FOR TESTING ONLY
+        #p = geom.primitive_recip_basis * (2 .* rdata[idx] .- 1)
 		
 		# notation: 
 		# _pm -> ^{+-}
 		# _pp -> ^{++}
 		# _rs denotes spinon-site indices
         try
-            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, sim, λ, g_tensor)
+            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, csim, g_tensor)
 
             broadened_peaks!(intensity.Sqω_pm,  S_pm_rs, E_rs, intensity.Egrid, integral_params.broadening_dE )
             broadened_peaks!(intensity.Sqω_pp,  S_pp_rs, E_rs, intensity.Egrid, integral_params.broadening_dE )
 
 
-            if g_tensor != nothing
+            if g_tensor !== nothing
                 broadened_peaks!(intensity.Sqω_magnetic, S_magnetic_rs, E_rs, intensity.Egrid, 
                                  integral_params.broadening_dE )
 
@@ -662,5 +741,138 @@ function construct_landau_gauge(lattice::geom.PyroPrimitive, α)
 end
 
 
+################################################################################
+################################################################################
+#  COMPILED VERSIONS
+#
+################################################################################
+
+
+function compile_XXZ!(sim::SimulationParameters,
+    coeff_I::Array{Int64},
+    coeff_J::Array{Int64},
+    coeff_C::Array{ComplexF64},
+    coeff_delta::Array{SVector{3,Float64}}
+    )
+    
+    A_sites = geom.A_sites(sim.lat)
+        
+    for (J0, x0) in enumerate(A_sites)
+        # the A sites
+        for mu = 1:4
+            x1 = x0 + 2*geom.pyro[mu]
+            J1 = geom.tetra_idx(sim.lat, x1)
+                
+            for nu = (mu+1):4
+                x2 = x0 + 2*geom.pyro[nu]
+                J2 = geom.tetra_idx(sim.lat, x2)
+                C = sim.Jpm*1/4*exp(1.0im*(sim.A[J0,mu] - sim.A[J0,nu]))
+
+                push!(coeff_I, J1)
+                push!(coeff_J, J2)
+                push!(coeff_C, C)
+                push!(coeff_delta, x1-x2)
+                # z = 1/4*exp(1.0im*(sim.A[J0,mu] - sim.A[J0,nu]) - 1.0im*K'*(x1-x2))
+                @assert x1-x2 == 2*geom.pyro[mu] - 2*geom.pyro[nu]
+            end
+        end
+
+        # the B sites
+        x0 += @SVector [2,2,2]
+        J0 += length(A_sites)
+        # @assert J0 == tetra_idx(lat, x0) 
+        for mu = 1:4
+            x1 = x0 - 2*geom.pyro[mu]
+            J1 = geom.tetra_idx(sim.lat, x1)
+                
+            for nu = mu+1:4
+                x2 = x0 - 2*geom.pyro[nu]
+                J2 = geom.tetra_idx(sim.lat, x2)
+                #z= 1/4*exp(1.0im*(-sim.A[J1,mu] + sim.A[J2,nu]) - 1.0im*K'*(x1-x2))
+                #
+                C = sim.Jpm*1/4*exp(1.0im*(-sim.A[J1,mu] + sim.A[J2,nu]))
+                push!(coeff_I, J1)
+                push!(coeff_J, J2)
+                push!(coeff_C, C)
+                push!(coeff_delta, x1-x2)
+                @assert x1-x2 == -2*geom.pyro[mu] + 2*geom.pyro[nu]
+            end
+        end
+        
+    end
+
+end
+
+
+function compile_Sx!(sim::SimulationParameters,
+    coeff_I::Array{Int64},
+    coeff_J::Array{Int64},
+    coeff_C::Array{ComplexF64},
+    coeff_delta::Array{SVector{3,Float64}}
+    )
+ 
+    #=
+    Calculates the nearest-neighbour hopping matrix elements due to applied magnetic field.
+    =#
+    # Project B onto the four local z axes
+    Bs = map(e-> e[:,3]' * sim.B, geom.axis)
+    
+    # the nearst neighbour (magnetic) hoppings
+    for (J0, x0) in enumerate(geom.A_sites(sim.lat))
+        for mu = 1:4
+            x1 = x0 + 2*geom.pyro[mu]
+            J1 = geom.tetra_idx(sim.lat, x1)
+
+            C = Bs[mu]/4 * exp(1.0im*sim.A[J0,mu]) 
+            push!(coeff_I, J0)
+            push!(coeff_J, J1)
+            push!(coeff_C, C)
+            push!(coeff_delta, x1-x0)
+
+            #hh = Bs[mu]/4 * exp(1.0im*sim.A[J0,mu] - 1.0im*K'*(x1-x0) )
+            #H[J0, J1] += hh
+        end
+    end
+end
+
+
+
+@inline function calc_hopping(model::AbstractCompiledHamiltonian, K::Vec3_F64)
+    #=
+    Calculates the next-neighbour hoppings due to the XXZ like $S^+S^-$ terms, with Jpm = 1.
+    =#
+    vals_upper = model.coeff_C .* exp.(-1im*model.coeff_delta'*K)::Vector{ComplexF64}
+    H = sparse(model.coeff_I, model.coeff_J, vals_upper)
+    H += sparse(model.coeff_J, model.coeff_I, conj.(vals_upper))
+    return H
+end
+
+
+#############################
+#  Convenience functions for gauge transforms
+#
+"""
+global_g must be a row vector
+"""
+function global_gauge(A_original, global_g)
+    return A_original .+ global_g
+end
+
+"""
+lattice_gradient(lat::geom.PyroPrimitive, G::Vector{Float64})
+Calculates the lattice gradient of G, [dG]_{rA,μ}
+where rA is an A site position, μ is a sublattice
+"""
+function lattice_gradient(lat::geom.PyroPrimitive, G::Vector{Float64})
+    A_sites = geom.A_sites(lat)
+    @assert size(G) == size(lat.tetra_sites)
+    retval = zeros(length(A_sites),4)
+    for (i,rA) in enumerate(A_sites)
+        for μ=1:4
+            retval[i,μ] = G[i] - G[geom.tetra_idx(lat, rA + 2 .*geom.pyro[μ])]
+        end
+    end
+    return retval
+end
 
 end # end module

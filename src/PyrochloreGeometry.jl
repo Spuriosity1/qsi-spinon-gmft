@@ -116,6 +116,7 @@ struct PyroFCC
 end
 
 const primitive_basis = @SMatrix [ 0 4 4; 4 0 4; 4 4 0 ]
+const primitive_recip_basis = 2π/8 * @SMatrix [ -1 1 1; 1 -1 1; 1 1 -1 ]
 
 """
 Represents a pyrochlore lattice with generic basis
@@ -127,6 +128,7 @@ struct PyroPrimitive
     L::SVector{3, Int}
     tetra_sites::Vector{Vec3} # the first half of these are the 'A' sites
     spin_sites::Vector{Vec3}
+
     function PyroPrimitive(L1, L2, L3)
         L = @SVector [ L1, L2, L3 ]
         
@@ -199,7 +201,7 @@ function tetra_idx(lattice::PyroFCC, tetra_pos::SVector{3,Int64})
         )*L + I[3]
     )*4 + fcc_sl + 1
 
-    # @assert all(mod.(lattice.tetra_sites[idx] - tetra_pos, 8L) .==0)
+    @assert all(mod.(lattice.tetra_sites[idx] - tetra_pos, 8L) .==0)
     return idx
 end
 
@@ -342,7 +344,7 @@ function tetra_IDX(lattice::PyroPrimitive, tetra_pos_::SVector{3,Int64})
     
     # if this bit is set, there is a "+2" or "+6" somewhere. 
     # therefore it is SL 2
-    # @assert mod.(u * tetra_pos, d) == (@SVector [0,0,0]) ||  mod.(u * tetra_pos, d) == (@SVector [2,2,2])
+    @assert mod.(u * tetra_pos_, d) == (@SVector [0,0,0]) ||  mod.(u * tetra_pos_, d) == (@SVector [2,2,2])
     return mod.(v * fld.(u * tetra_pos_, d), lattice.L), diamond_sl
 end
 
@@ -351,13 +353,12 @@ function tetra_idx(lattice::PyroPrimitive, tetra_pos_::SVector{3,Int64})
     return ((diamond_sl*lattice.L[1]+I[1])*lattice.L[2]+I[2])*lattice.L[3] + I[3] + 1
 end
 
-function spin_sl(lattice::PyroPrimitive, spin_pos_::SVector{3, Int})
+function spin_sl(spin_pos_::SVector{3, Int})
     # figure out the spin sublattice
    
     tmp = MVector{3, Int64}(spin_pos_)
 
     #decide the spin sublattice
-    spin_sl = -1
     for ssl in 1:4
         tmp = spin_pos_ - pyro[ssl]
         
@@ -414,7 +415,7 @@ function get_hexagons(lattice::PyroGeneric)
 
             push!(row, [])
             for (j, s) in enumerate(spin_sites)
-                nu = spin_sl(lattice, s)
+                nu = spin_sl(s)
                 fcc = s - pyro[nu]
                 J = tetra_idx(lattice, fcc)
                 push!(last(row), (J, nu))
