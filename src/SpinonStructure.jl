@@ -660,8 +660,12 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
     return intensity
 end
 
+# FOR TESTS ONLY
+#=
 using JLD
 const rdata = eachrow(load("rdata.jld")["content"])
+=#
+
 
 function spectral_weight!(
     intensity::Sqω_set,
