@@ -378,6 +378,12 @@ function calc_spinons_along_path(output_dir;
         sim=csim.sim)
 end
 
+function Jring(Jpm, B)
+    # assumes units of Jy
+    ring_normals =  [1. 1 1; 1 -1 -1;-1 1 -1;-1 -1 1]
+    
+    return (3 * Jpm^3/2) .- (5/12) .* Jpm^2 .* (ring_normals * B).^2
+end
 
 # some useful defaults
 
@@ -388,3 +394,4 @@ const integration_settings = Dict(
     "very_slow" =>  IntegrationParameters(n_K_samples=10000 ),
     "ultra_slow" => IntegrationParameters(n_K_samples=100000)
 )
+
