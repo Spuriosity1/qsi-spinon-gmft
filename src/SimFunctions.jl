@@ -30,8 +30,7 @@ function save_SQW(output_dir::String;
     jldopen(name, "w") do file
         g1 = create_group(file, "integration_parameters")
         g1["n_K_samples"] = ip.n_K_samples
-        g1["broadening_dE"] = ip.broadening_dE
-        g1["version"] = 1.2
+        g1["version"] = 1.3
 #        g1["BZ_grid_density"] = ip.BZ_grid_density
 
         g = create_group(file, "physical_parameters")
@@ -77,8 +76,7 @@ function save_field_sweep(output_dir::String;
     jldopen(name, "w") do file
         g1 = create_group(file, "integration_parameters")
         g1["n_K_samples"] = ip.n_K_samples
-        g1["broadening_dE"] = ip.broadening_dE
-        g1["version"] = 1.2
+        g1["version"] = 1.3
 
         g = create_group(file, "physical_parameters")
         g["name"] = sim.name
@@ -216,6 +214,8 @@ function calc_integrated_specweight(
 
     samples_per_trial = ip.n_K_samples ÷ Threads.nthreads()
 
+    deltaE = maximum(Egrid[2:end] - Egrid[1:end-1])
+
     
     function single_trial()        
         Spm_res = zeros(ComplexF64, length(Egrid) ) 
@@ -229,9 +229,9 @@ function calc_integrated_specweight(
 
             E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, csim, g_tensor)
 
-            broadened_peaks!(Spm_res, S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
-            broadened_peaks!(Spp_res, S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
-            broadened_peaks!(Smagnetic_res, S_magnetic_rs::Matrix{Float64}, E_rs, Egrid, ip.broadening_dE )
+            broadened_peaks!(Spm_res, S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, deltaE )
+            broadened_peaks!(Spp_res, S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, deltaE )
+            broadened_peaks!(Smagnetic_res, S_magnetic_rs::Matrix{Float64}, E_rs, Egrid, deltaE )
 
             next!(prog)
         end
@@ -261,7 +261,6 @@ end
 
 
 
-
 # single-threaded version
 function calc_integrated_S(
     csim::CompiledModel,
@@ -274,16 +273,19 @@ function calc_integrated_S(
     Spp_res = zeros(ComplexF64, length(Egrid) ) 
     Smagnetic_res = zeros(Float64, length(Egrid) ) 
 
+
+    deltaE = maximum(Egrid[2:end] - Egrid[1:end-1])
+
     for _ = 1:ip.n_K_samples  
         q = (1 .- 2 .*(@SVector rand(3)))*4π/8
         p = (1 .- 2 .*(@SVector rand(3)))*4π/8
 
         try
             E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, csim, g_tensor) 
-            Spm_res += broadened_peaks(S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
-            Spp_res += broadened_peaks(S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, ip.broadening_dE )
+            Spm_res += broadened_peaks(S_pm_rs::Matrix{ComplexF64}, E_rs, Egrid, deltaE )
+            Spp_res += broadened_peaks(S_pp_rs::Matrix{ComplexF64}, E_rs, Egrid, deltaE )
             Smagnetic_res += broadened_peaks(S_magnetic_rs::Matrix{Float64}, E_rs, Egrid,
-                                         ip.broadening_dE )
+                                         deltaE )
                     
         catch e
             if e isa DomainError
@@ -347,7 +349,9 @@ end
 
 function calc_spinons_along_path(output_dir;
     csim::CompiledModel,
-    path::BZPath)
+    path::BZPath,
+    kshift=[0.,0.,0.]
+    )
     num_K = length(path.K)
     bands = zeros(Float64, num_K, length(csim.sim.lat.tetra_sites))
     
@@ -355,7 +359,7 @@ function calc_spinons_along_path(output_dir;
     @Threads.threads for J=1:num_K
         bands[J,:] = begin
             try
-                spinon_dispersion(path.K[J], csim)[1]'
+                spinon_dispersion(path.K[J]+kshift, csim)[1]'
             catch e
                 if e isa DomainError
                     NaN*ones(Float64, 1,length(csim.sim.lat.tetra_sites))
@@ -378,10 +382,9 @@ end
 # some useful defaults
 
 const integration_settings = Dict(
-    "very_fast" => IntegrationParameters(n_K_samples=10,   broadening_dE=0.1),
-    "fast" =>   IntegrationParameters(n_K_samples=100,  broadening_dE=0.05),
-    "slow" =>      IntegrationParameters(n_K_samples=1000, broadening_dE=0.02),
-    "very_slow" => IntegrationParameters(n_K_samples=10000,broadening_dE=0.02),
-    "ultra_slow" => IntegrationParameters(n_K_samples=100000,broadening_dE=0.02)
+    "very_fast" =>  IntegrationParameters(n_K_samples=10    ),
+    "fast" =>       IntegrationParameters(n_K_samples=100   ),
+    "slow" =>       IntegrationParameters(n_K_samples=1000  ),
+    "very_slow" =>  IntegrationParameters(n_K_samples=10000 ),
+    "ultra_slow" => IntegrationParameters(n_K_samples=100000)
 )
-

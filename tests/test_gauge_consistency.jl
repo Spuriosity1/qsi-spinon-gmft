@@ -11,7 +11,7 @@ using BenchmarkTools
 using ProgressMeter
 
 # number of test points to check
-const NCHECK=1000
+const NCHECK=100
 
 # const integration_settings = Dict(
 #     "very_fast" => IntegrationParameters(n_K_samples=10,   broadening_dE=0.1),
@@ -23,25 +23,27 @@ const NCHECK=1000
 
 lat = geom.PyroPrimitive(5,6,5)
 
+bfield = [0.1,0.4,0.9]
+
 # the control / reference
 sim1 = SimulationParameters("0flux_std_gauge",
     lattice=lat,
     A=zeros(div(length(lat.tetra_sites),2),4),
     Jpm=-0.046,
-    B=[0.,0.,0.],
+    B=bfield,
     n_samples=10000
     )
 
 ch1 = SpinonStructure.CompiledHamiltonian(sim1)
 
-function generate_gauged_sim(gaugevec)
+function generate_gauged_sim(gaugevec, shiftg)
 
     sim_test = SimulationParameters("0flux_random",
     lattice=lat,
     # A=[1 1 0 0; 0 0 -1 -1; 1 1 0 0; 1 1 0 0],
-    A=lattice_gradient(lat, gaugevec),
+    A=lattice_gradient(lat, gaugevec) .+ shiftg,
     Jpm=-0.046,
-    B=[0.,0.,0.],
+    B=bfield,
     n_samples=10000
     )
 
@@ -52,21 +54,50 @@ end
 
 
 n_failures = 0;
-
+println("Testing random divergence free gauges... (0-flux)")
 @showprogress for n=1:NCHECK  
     Q = SVector{3}(rand(3))*2π;
     H1 = SpinonStructure.calc_hopping(ch1, Q)
 
     gaugevec = 2π .*rand(Float64, size(lat.tetra_sites)).-π
-    ch2 = generate_gauged_sim(gaugevec)
 
+
+    ch2 = generate_gauged_sim(gaugevec, [0 0 0 0])
+    
     H2 = SpinonStructure.calc_hopping(ch2, Q)
 
     gauge = diagm(exp.(-1im.*gaugevec))
     diff = gauge'*H2*gauge  - H1
     if norm(diff) > 1e-10
         println("TEST FAILED: gauge transform not gauge")
-        display(diff .> 1e-10)
+        display(norm(diff))
+        global n_failures += 1;
+    end
+end
+
+
+
+println("Testing random large gauges...")
+@showprogress for n=1:NCHECK  
+    Q = SVector{3}(rand(3))*2π;
+    H1 = SpinonStructure.calc_hopping(ch1, Q)
+
+    # the SL gauge
+    #
+    deltaQ = rand(Float64, 3)*2π
+    shiftg = map(bμ -> 2*deltaQ'*bμ,  geom.pyro)'
+
+
+    gaugevec = 2π .*rand(Float64, size(lat.tetra_sites)).-π
+    ch2 = generate_gauged_sim(gaugevec, shiftg)
+    
+    H2 = SpinonStructure.calc_hopping(ch2, Q+deltaQ)
+
+    gauge = diagm(exp.(-1im.*gaugevec))
+    diff = gauge'*H2*gauge  - H1
+    if norm(diff) > 1e-10
+        println("TEST FAILED: gauge transform not gauge")
+        display(norm(diff))
         global n_failures += 1;
     end
 end

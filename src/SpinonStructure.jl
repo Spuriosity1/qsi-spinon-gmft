@@ -141,6 +141,19 @@ struct CompiledModel <: AbstractCompiledHamiltonian
             calc_lambda(cm)
             )
     end
+
+
+    function CompiledModel(_sim::SimulationParameters, lambda::Float64)
+        cm = CompiledHamiltonian(_sim)
+        new(
+            _sim,
+            cm.coeff_I,
+            cm.coeff_J,
+            cm.coeff_C,
+            cm.coeff_delta,
+            lambda
+            )
+    end
 end
 
 
@@ -427,15 +440,14 @@ end
 
 
 """
-    IntegrationParameters(n_K_samples::Int, BZ_grid_density::Int, broadening_dE::Float64)
+    IntegrationParameters(n_K_samples::Int)
 
 n_K_samples - number of points to use for the MC integration
-BZ_grid_density - effective length of the system
-broadening_dE - lifetime broadening parameter for the Lorentzians
 """
 @kwdef struct IntegrationParameters
     n_K_samples::Int
-    broadening_dE::Float64
+    integration_method="MC"
+    broaden_factor=1
 end
 
 
@@ -469,19 +481,24 @@ Returns:
 `Spm`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S-(-k,0)>
 `Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
 """
-function corr_at(q::Vec3_F64, p::Vec3_F64, csim::CompiledModel,
+function corr_at(Q::Vec3_F64, p::Vec3_F64, csim::CompiledModel,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
     E1, U1 = spinon_dispersion( p, csim)
     # ORIGINAL (does it actually make sense? NO!)
     # E2, U2 = spinon_dispersion( q-p, csim)
     # NEW ( probably right )
-    E2, U2 = spinon_dispersion( p-q, csim)
+    # E2, U2 = spinon_dispersion( p-q, csim)
+    # NEW NEW (wrapping to BZ correctly)a
+    p2 = geom.wrap_BZ(csim.sim.lat, p+Q)
+    E2, U2 = spinon_dispersion( p2, csim)
     # Both p's must appear with the same sign, or else we break p-> p + delta 
     # invariance (required by gauge symmetry)
 
 	
-    QQ_tensor = SMatrix{3,3,Float64}(diagm([1.,1.,1.]) - q*q'/(q'*q))
+    QQ_tensor = SMatrix{3,3,Float64}(diagm([1.,1.,1.]) - Q*Q'/(Q'*Q))
+
+    q = geom.wrap_BZ(csim.sim.lat, Q)
 
     f=length(csim.sim.lat.tetra_sites)
     S_pm = zeros(ComplexF64, f,f)
@@ -506,14 +523,18 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, csim::CompiledModel,
             # the "l" bit
             x1 = U1[jA, :] .* conj.(U1[jpA, :]) ./ (2*E1) 
             # the "l'" bit
-            # Conjugating this seems to make no difference in XXZ model
-            x2 = U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
+            #x2 = U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
+            x2 = conj.(U2[jB, :]) .* U2[jpB, :] ./ (2*E2)
             
 
             # Have checked all signs here, ANY change breaks gauge invariance
             # (bad)
             delta_S_pm = (
-                exp(1im*(q/2 - p)'* (geom.pyro[μ]-geom.pyro[ν]))
+                exp(2im*(q/2 - p2)'* (geom.pyro[μ]-geom.pyro[ν])) # what calculations says
+                # >>>>> NEW
+                * exp(1im*(Q-q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν]))
+                * exp(1im*(q+p-p2)'*(rA-rpA)) 
+                # <<<<<
                 )*exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν])) * x1*transpose(x2)
 			S_pm .+= delta_S_pm
 		
@@ -524,7 +545,7 @@ function corr_at(q::Vec3_F64, p::Vec3_F64, csim::CompiledModel,
             # the "l'" bit
             x4 = U2[jpA, :] .* conj(U2[jB, :]) ./ (2*E2)
             delta_S_pp = (
-                exp(2im*(q/2)'* (geom.pyro[μ]-geom.pyro[ν]))*
+                exp(1im*(q/2)'* (geom.pyro[μ]-geom.pyro[ν]))*
                 exp(-2im*(p)'* (geom.pyro[μ]+geom.pyro[ν]))
                 )*exp(1im*(csim.sim.A[jA,μ]+csim.sim.A[jpA, ν])) * x3*x4'
 			S_pp .+= delta_S_pp
@@ -558,6 +579,58 @@ end
 # puts Lorentzians of weights Snm at energies Enm
 function broadened_peaks!(
 	Sqω::Vector{Float64},
+	Sqω2::Vector{Float64},
+	Snm::Matrix{Float64},
+	Enm::Matrix{Float64},
+	Egrid::Vector{Float64},
+	dE::Float64
+	)
+#=
+	for (E,S) in zip(Enm,Snm)
+		for (i,e) in enumerate(Egrid)
+            tmp = S*Lorentzian(e-E, dE)::Float64
+			Sqω[i] += tmp
+			Sqω2[i] += tmp*tmp
+        end
+	end
+    =#
+
+    for (i,e) in enumerate(Egrid)
+        tmp=0.0
+        for (E,S) in zip(Enm,Snm)
+			tmp += (S*Lorentzian(e-E, dE))::ComplexF64
+		end
+        Sqω[i] += tmp
+        Sqω2[i] += tmp^2
+
+	end
+end
+
+
+function broadened_peaks!(
+	Sqω::Vector{ComplexF64}, 
+	Sqω2::Vector{Float64},
+	Snm::Matrix{ComplexF64},
+	Enm::Matrix{Float64},
+	Egrid::Vector{Float64},
+	dE::Float64
+	)
+
+    for (i,e) in enumerate(Egrid)
+        tmp=0.0im
+        for (E,S) in zip(Enm,Snm)
+			tmp += (S*Lorentzian(e-E, dE))::ComplexF64
+		end
+        Sqω[i] += tmp
+        Sqω2[i] += real(tmp)^2
+
+	end
+end
+
+
+
+function broadened_peaks!(
+	Sqω::Vector{Float64},
 	Snm::Matrix{Float64},
 	Enm::Matrix{Float64},
 	Egrid::Vector{Float64},
@@ -566,14 +639,14 @@ function broadened_peaks!(
 
 	for (E,S) in zip(Enm,Snm)
 		for (i,e) in enumerate(Egrid)
-			Sqω[i] += S*Lorentzian(e-E, dE)
-		end
+            Sqω[i] += S*Lorentzian(e-E, dE)::Float64
+        end
 	end
 end
 
 
 function broadened_peaks!(
-	Sqω::Vector{ComplexF64},
+	Sqω::Vector{ComplexF64}, 
 	Snm::Matrix{ComplexF64},
 	Enm::Matrix{Float64},
 	Egrid::Vector{Float64},
@@ -582,7 +655,7 @@ function broadened_peaks!(
 
 	for (E,S) in zip(Enm,Snm)
 		for (i,e) in enumerate(Egrid)
-			Sqω[i] += S*Lorentzian(e-E, dE)
+            Sqω[i] += S*Lorentzian(e-E, dE)
 		end
 	end
 end
@@ -607,15 +680,26 @@ mutable struct Sqω_set
     Sqω_pm::Vector{ComplexF64}
     Sqω_pp::Vector{ComplexF64}
     Sqω_magnetic::Vector{Float64}
+
+    # squared vars for extimating variance
+    Sqω_pm2::Vector{Float64}
+    Sqω_pp2::Vector{Float64}
+    Sqω_magnetic2::Vector{Float64}
+
     Egrid::Vector{Float64}
     bounds::Vector{Float64}
+    N::Int
 
     function Sqω_set(Egrid::Vector{Float64})
         Sqω_pm       = similar(Egrid, ComplexF64)
         Sqω_pp       = similar(Egrid, ComplexF64)
         Sqω_magnetic = similar(Egrid, Float64)        
 
-        new(Sqω_pm, Sqω_pp, Sqω_magnetic, Egrid,[Inf, -Inf])
+        Sqω_pm2       = similar(Egrid, Float64)
+        Sqω_pp2      = similar(Egrid, Float64)
+        Sqω_magnetic2 = similar(Egrid, Float64)        
+        new(Sqω_pm, Sqω_pp, Sqω_magnetic,Sqω_pm2,Sqω_pp2,Sqω_magnetic2,
+            Egrid,[Inf, -Inf],0)
     end
 end
 
@@ -623,6 +707,11 @@ function initzeros!(intensity::Sqω_set)
     intensity.Sqω_pm .= 0
     intensity.Sqω_pp .= 0
     intensity.Sqω_magnetic .= 0
+
+
+    intensity.Sqω_pm2 .= 0
+    intensity.Sqω_pp2 .= 0
+    intensity.Sqω_magnetic2 .= 0
 
     intensity.bounds = [Inf, -Inf]
 end
@@ -666,43 +755,75 @@ using JLD
 const rdata = eachrow(load("rdata.jld")["content"])
 =#
 
+function get_integration_method(lat::geom.PyroPrimitive, integral_params::IntegrationParameters)
+    nsample = nothing
+    getp = nothing
 
+    B = geom.reciprocal_basis(lat)
+
+    if integral_params.integration_method == "MC"
+        nsample = integral_params.n_K_samples
+        getp = (_)-> B *  (SVector{3}(rand(3)).-0.5)
+    elseif integral_params.integration_method == "grid"
+        # round to next largest cube
+        nk = Int(ceil(integral_params.n_K_samples^(1/3)))
+        nsample = (nk^3)::Int
+        getp = (idx)-> B* ( SVector{3}(
+            [ div(idx, nk^2), div(idx, nk) % nk, idx % nk ]
+            ) ./nk ) 
+    else
+        throw("unrecognised integration method")
+    end
+
+    return nsample, getp
+end
+
+
+		# notation: 
+		# _pm -> ^{+-}
+		# _pp -> ^{++}
+		# _rs denotes spinon-site indices
+        #
+"""
+spectral_weight!(
+    intensity::Sqω_set, 
+    q::Vec3_F64, 
+	csim::CompiledModel,
+    integral_params::IntegrationParameters,
+	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
+"""
 function spectral_weight!(
     intensity::Sqω_set,
     q::Vec3_F64, 
 	csim::CompiledModel,
     integral_params::IntegrationParameters,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
-    # cursed Monte Carlo integration
 
     initzeros!(intensity) 
-    
 
-    for idx = 1:integral_params.n_K_samples 
-        # p = geom.primitive_recip_basis *(1000* SVector{3}(rand(3)) .- 500)
-        # experimental
-         p = geom.primitive_recip_basis * (2 .*SVector{3}(rand(3)) .- 1)
-        # p = SVector{3}(rand(3))*4π
-        #
-        # FOR TESTING ONLY
-        #p = geom.primitive_recip_basis * (2 .* rdata[idx] .- 1)
-		
-		# notation: 
-		# _pm -> ^{+-}
-		# _pp -> ^{++}
-		# _rs denotes spinon-site indices
+    deltaE = maximum(intensity.Egrid[2:end] - intensity.Egrid[1:end-1])
+
+    nsample, getp = get_integration_method(csim.sim.lat, integral_params)
+    
+    for idx = 0:(nsample-1)
+        p =  getp(idx)       # experimental
+
         try
             E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, csim, g_tensor)
 
-            broadened_peaks!(intensity.Sqω_pm,  S_pm_rs, E_rs, intensity.Egrid, integral_params.broadening_dE )
-            broadened_peaks!(intensity.Sqω_pp,  S_pp_rs, E_rs, intensity.Egrid, integral_params.broadening_dE )
+            broadened_peaks!(intensity.Sqω_pm, intensity.Sqω_pm2,
+                    S_pm_rs, E_rs, intensity.Egrid, deltaE*integral_params.broaden_factor )
+
+            intensity.N += 1
+            #broadened_peaks!(intensity.Sqω_pp, 
+             #       S_pp_rs, E_rs, intensity.Egrid, deltaE )
 
 
-            if g_tensor !== nothing
-                broadened_peaks!(intensity.Sqω_magnetic, S_magnetic_rs, E_rs, intensity.Egrid, 
-                                 integral_params.broadening_dE )
+         #   if g_tensor !== nothing
+          #      broadened_peaks!(intensity.Sqω_magnetic, 
+           #         S_magnetic_rs, E_rs, intensity.Egrid, deltaE )
 
-            end	
+            #end	
 
             intensity.bounds[1] = min(intensity.bounds[1], reduce(min,  E_rs) ) 
             intensity.bounds[2] = max(intensity.bounds[2], reduce(max,  E_rs) )
@@ -747,7 +868,7 @@ end
 
 ################################################################################
 ################################################################################
-#  COMPILED VERSIONS
+#  PHYSICS (tight binding) IMPLEMENTATION
 #
 ################################################################################
 
@@ -797,9 +918,11 @@ function compile_XXZ!(sim::SimulationParameters,
                 C = sim.Jpm*1/4*exp(1.0im*(-sim.A[J1,mu] + sim.A[J2,nu]))
                 push!(coeff_I, J1)
                 push!(coeff_J, J2)
-                push!(coeff_C, C)
-                push!(coeff_delta, x1-x2)
+
                 @assert x1-x2 == -2*geom.pyro[mu] + 2*geom.pyro[nu]
+                push!(coeff_C, C) # TEMP TEST
+                push!(coeff_delta, x1-x2)
+                #push!(coeff_C, 0 )
             end
         end
         
@@ -827,11 +950,12 @@ function compile_Sx!(sim::SimulationParameters,
             x1 = x0 + 2*geom.pyro[mu]
             J1 = geom.tetra_idx(sim.lat, x1)
 
-            C = Bs[mu]/4 * exp(1.0im*sim.A[J0,mu]) 
+            C = Bs[mu]/4 * exp(-1.0im*sim.A[J0,mu]) 
             push!(coeff_I, J0)
             push!(coeff_J, J1)
             push!(coeff_C, C)
-            push!(coeff_delta, x1-x0)
+            push!(coeff_delta, -x1+x0)
+
 
             #hh = Bs[mu]/4 * exp(1.0im*sim.A[J0,mu] - 1.0im*K'*(x1-x0) )
             #H[J0, J1] += hh

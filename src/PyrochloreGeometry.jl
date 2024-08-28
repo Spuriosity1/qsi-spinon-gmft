@@ -1,5 +1,13 @@
 module PyrochloreGeometry
 
+export PyroPrimitive 
+export tetra_idx, tetra_IDX
+export spin_sl, spin_idx
+export get_hexagons, get_dual_fcc_locations
+export A_sites
+export lattice_vectors, reciprocal_basis
+
+using StaticArrays: LinearAlgebra
 using StaticArrays
 
 const Vec3 = SVector{3,Int64};
@@ -116,7 +124,7 @@ struct PyroFCC
 end
 
 const primitive_basis = @SMatrix [ 0 4 4; 4 0 4; 4 4 0 ]
-const primitive_recip_basis = 2π/8 * @SMatrix [ -1 1 1; 1 -1 1; 1 1 -1 ]
+const primitive_recip_basis = SMatrix{3,3}( 2π/8 * [ -1 1 1; 1 -1 1; 1 1 -1 ])
 
 """
 Represents a pyrochlore lattice with generic basis
@@ -348,9 +356,20 @@ function tetra_IDX(lattice::PyroPrimitive, tetra_pos_::SVector{3,Int64})
     return mod.(v * fld.(u * tetra_pos_, d), lattice.L), diamond_sl
 end
 
+
+using LinearAlgebra
+
+function is_Bravais(lat::PyroPrimitive, x,tol=1e-10)
+    return norm(exp.(1im .* reciprocal_basis(lat)'*x).- 1) < tol
+end
+
 function tetra_idx(lattice::PyroPrimitive, tetra_pos_::SVector{3,Int64})
     I, diamond_sl = tetra_IDX(lattice, tetra_pos_)
-    return ((diamond_sl*lattice.L[1]+I[1])*lattice.L[2]+I[2])*lattice.L[3] + I[3] + 1
+    res= ((diamond_sl*lattice.L[1]+I[1])*lattice.L[2]+I[2])*lattice.L[3] + I[3] + 1
+    @assert begin
+    is_Bravais(lattice, lattice.tetra_sites[res] - tetra_pos_)     
+    end "Incorrect lattice resolution: Got $(tetra_pos_), assigned $(lattice.tetra_sites[res])"
+    return res
 end
 
 function spin_sl(spin_pos_::SVector{3, Int})
@@ -426,7 +445,28 @@ function get_hexagons(lattice::PyroGeneric)
     return hexa_sites
 end
 
+"""
+lattice_vectors(lat::PyroPrimitive)
+Returns as 3x3 matrix of the basis vectors, stored as columns
+"""
+function lattice_vectors(lat::PyroPrimitive)
+    return lat.L' .* primitive_basis 
+end
 
+"""
+reciprocal_basis(lat::PyroPrimitive)
+Returns as 3x3 matrix of the reciprocal basis vectors, stored as columns
+satisfies reciprocal_basis' * lattice_vectors = 2π eye(3)
+"""
+function reciprocal_basis(lat::PyroPrimitive)
+    return inv(lattice_vectors(lat)').*2π
+end
+
+function wrap_BZ(lat::PyroPrimitive, Q::SVector{3,Float64})
+    B = reciprocal_basis(lat)
+    Binv = lattice_vectors(lat)'/(2π)
+    return B *( mod.(Binv * Q .+0.5, 1) .- 0.5)
+end
 
 const high_symmetry_points = Dict(
     "\\Gamma"=> [0.,0.,0.],
