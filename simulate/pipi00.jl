@@ -1,9 +1,9 @@
 include("driver-headless.jl")
 
 
-Jpm = -0.04
+Jpm = 0.04
 
-Bmin =sqrt(-9*Jpm/5)
+Bmin =sqrt(9*Jpm/5)
 println("minimum B = ",Bmin)
 
 magnetic_fields = [
