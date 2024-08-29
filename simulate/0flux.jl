@@ -7,15 +7,22 @@ magnetic_fields = [
     [1,1,1]*0.1/√3, [1,1,0]*0.1/√2,
     ]
 
-simlist = map(
-    b->SimulationParameters("0flux",
+    Jpm = -0.04
+
+    # double check phase is right
+for B in magnetic_fields
+    @assert all(Jring(-0.04, B).< 0)
+end
+
+
+simlist = [
+    SimulationParameters("0flux",
     lattice=geom.PyroPrimitive(1,1,1),
     A=[0 0 0 0],
     Jpm=-0.04,
     B=b,
     n_samples=10000
-    ),
-    magnetic_fields);
+    ) for b in magnetic_fields ]
 
 
 for (i, sim) in enumerate(simlist)

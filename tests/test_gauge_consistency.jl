@@ -24,6 +24,7 @@ const NCHECK=100
 lat = geom.PyroPrimitive(5,6,5)
 
 bfield = [0.1,0.4,0.9]
+#bfield = [0.,0.,0.]
 
 # the control / reference
 sim1 = SimulationParameters("0flux_std_gauge",
@@ -66,7 +67,7 @@ println("Testing random divergence free gauges... (0-flux)")
     
     H2 = SpinonStructure.calc_hopping(ch2, Q)
 
-    gauge = diagm(exp.(-1im.*gaugevec))
+    gauge = diagm(exp.(+1im.*gaugevec))
     diff = gauge'*H2*gauge  - H1
     if norm(diff) > 1e-10
         println("TEST FAILED: gauge transform not gauge")
@@ -93,7 +94,7 @@ println("Testing random large gauges...")
     
     H2 = SpinonStructure.calc_hopping(ch2, Q+deltaQ)
 
-    gauge = diagm(exp.(-1im.*gaugevec))
+    gauge = diagm(exp.(+1im.*gaugevec))
     diff = gauge'*H2*gauge  - H1
     if norm(diff) > 1e-10
         println("TEST FAILED: gauge transform not gauge")

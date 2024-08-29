@@ -531,7 +531,7 @@ function corr_at(Q::Vec3_F64, p::Vec3_F64, csim::CompiledModel,
             # (bad)
             delta_S_pm = (
                 exp(2im*(q/2 - p2)'* (geom.pyro[μ]-geom.pyro[ν])) # what calculations says
-                # >>>>> NEW
+                # >>>>> NEW	
                 * exp(1im*(Q-q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν]))
                 * exp(1im*(q+p-p2)'*(rA-rpA)) 
                 # <<<<<
@@ -891,12 +891,12 @@ function compile_XXZ!(sim::SimulationParameters,
             for nu = (mu+1):4
                 x2 = x0 + 2*geom.pyro[nu]
                 J2 = geom.tetra_idx(sim.lat, x2)
-                C = sim.Jpm*1/4*exp(1.0im*(sim.A[J0,mu] - sim.A[J0,nu]))
+                C = sim.Jpm*1/4*exp(1.0im*(-sim.A[J0,mu] + sim.A[J0,nu]))
 
                 push!(coeff_I, J1)
                 push!(coeff_J, J2)
                 push!(coeff_C, C)
-                push!(coeff_delta, x1-x2)
+                push!(coeff_delta, -x1+x2)
                 # z = 1/4*exp(1.0im*(sim.A[J0,mu] - sim.A[J0,nu]) - 1.0im*K'*(x1-x2))
                 @assert x1-x2 == 2*geom.pyro[mu] - 2*geom.pyro[nu]
             end
@@ -915,16 +915,17 @@ function compile_XXZ!(sim::SimulationParameters,
                 J2 = geom.tetra_idx(sim.lat, x2)
                 #z= 1/4*exp(1.0im*(-sim.A[J1,mu] + sim.A[J2,nu]) - 1.0im*K'*(x1-x2))
                 #
-                C = sim.Jpm*1/4*exp(1.0im*(-sim.A[J1,mu] + sim.A[J2,nu]))
+                C = sim.Jpm*1/4*exp(1.0im*( sim.A[J1,mu] - sim.A[J2,nu]))
                 push!(coeff_I, J1)
                 push!(coeff_J, J2)
 
                 @assert x1-x2 == -2*geom.pyro[mu] + 2*geom.pyro[nu]
                 push!(coeff_C, C) # TEMP TEST
-                push!(coeff_delta, x1-x2)
+                push!(coeff_delta, -x1+x2)
                 #push!(coeff_C, 0 )
             end
         end
+		
         
     end
 
@@ -950,11 +951,11 @@ function compile_Sx!(sim::SimulationParameters,
             x1 = x0 + 2*geom.pyro[mu]
             J1 = geom.tetra_idx(sim.lat, x1)
 
-            C = Bs[mu]/4 * exp(-1.0im*sim.A[J0,mu]) 
+            C = Bs[mu]/4 * exp(1.0im*sim.A[J0,mu]) 
             push!(coeff_I, J0)
             push!(coeff_J, J1)
             push!(coeff_C, C)
-            push!(coeff_delta, -x1+x0)
+            push!(coeff_delta, x1-x0)
 
 
             #hh = Bs[mu]/4 * exp(1.0im*sim.A[J0,mu] - 1.0im*K'*(x1-x0) )
