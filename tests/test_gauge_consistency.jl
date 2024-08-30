@@ -55,19 +55,19 @@ end
 
 
 n_failures = 0;
-println("Testing random divergence free gauges... (0-flux)")
+println("Testing M's gauge convariance for divergence free gauges... (0-flux)")
 @showprogress for n=1:NCHECK  
     Q = SVector{3}(rand(3))*2π;
     H1 = SpinonStructure.calc_hopping(ch1, Q)
 
-    gaugevec = 2π .*rand(Float64, size(lat.tetra_sites)).-π
+    Γ = 2π .*rand(Float64, size(lat.tetra_sites)).-π
 
 
-    ch2 = generate_gauged_sim(gaugevec, [0 0 0 0])
+    ch2 = generate_gauged_sim(Γ, [0 0 0 0])
     
     H2 = SpinonStructure.calc_hopping(ch2, Q)
 
-    gauge = diagm(exp.(+1im.*gaugevec))
+    gauge = diagm(exp.(+1im.*Γ))
     diff = gauge'*H2*gauge  - H1
     if norm(diff) > 1e-10
         println("TEST FAILED: gauge transform not gauge")
@@ -78,7 +78,7 @@ end
 
 
 
-println("Testing random large gauges...")
+println("Testing M's gauge covariance for random large gauges...")
 @showprogress for n=1:NCHECK  
     Q = SVector{3}(rand(3))*2π;
     H1 = SpinonStructure.calc_hopping(ch1, Q)
@@ -102,6 +102,7 @@ println("Testing random large gauges...")
         global n_failures += 1;
     end
 end
+
 
 if n_failures > 0
     println("$(n_failures)/$(NCHECK) failed.");
