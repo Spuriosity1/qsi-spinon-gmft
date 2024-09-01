@@ -483,12 +483,10 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
     E1, U1 = spinon_dispersion( p1, csim)
-    # ORIGINAL (does it actually make sense? NO!)
-    # E2, U2 = spinon_dispersion( q-p, csim)
-    # NEW ( probably right )
-    # E2, U2 = spinon_dispersion( p-q, csim)
-    # NEW NEW (wrapping to BZ correctly)a
-    p2 = geom.wrap_BZ(csim.sim.lat, p1+Q)
+    p2 = geom.wrap_BZ(csim.sim.lat, p1-Q)
+	Q = geom.wrap_BZ(csim.sim.lat, Q)
+	#p2 = p1+Q
+
     E2, U2 = spinon_dispersion( p2, csim)
     # Both p's must appear with the same sign, or else we break p-> p + delta 
     # invariance (required by gauge symmetry)
@@ -496,7 +494,7 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 	
     QQ_tensor = SMatrix{3,3,Float64}(diagm([1.,1.,1.]) - Q*Q'/(Q'*Q))
 
-    q = geom.wrap_BZ(csim.sim.lat, Q)
+    #q = geom.wrap_BZ(csim.sim.lat, Q)
 
     f=length(csim.sim.lat.tetra_sites)
     S_pm = zeros(ComplexF64, f,f)
@@ -519,9 +517,9 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 
 			# <S+ S->
             # the "l" bit
-            x1 = U1[jA, :] .* conj.(U1[jpA, :]) ./ (2*E1) 
+			x1 = conj.(U1[jA, :]) .* U1[jpA, :] ./ (2*E1) 
             # the "l'" bit
-            x2 = conj.(U2[jB, :]) .* U2[jpB, :] ./ (2*E2)
+			x2 = U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
 
 			# CERTAINTIES:
 			#
@@ -531,12 +529,21 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 			#     U_{rl} \to e^{iΓ_r} U_{rl}
 			# II  this conjugation of x1 x2* must be consistent relative to 
 			#     this sign of A
+			# III Remains gauge invariant only as a function of p1-p2
             
             delta_S_pm = (
-			exp(1im* (q/2 - p2)'* (2*geom.pyro[μ]-2*geom.pyro[ν])) 
-                * exp(1im*(Q-q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν]))
-                * exp(1im*(q + p1-p2)'*(rA-rpA)) 
-				)*exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν])) * conj.(x1*transpose(x2))
+			# This line is fixed by ginvariance:
+				#exp(1im* ( - p2)'* (2*geom.pyro[μ]-2*geom.pyro[ν])) 
+				exp(1im* (  -2*p2)'* (geom.pyro[μ]-geom.pyro[ν])) 
+			# idk about these signs
+                * exp(1im*(Q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν]))
+			# sign is free relative to ginvariance
+                * exp(1im*( p1-p2)'*(rA-rpA)) 
+			# sign fixed relative to one another
+				*exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))
+				*x1*transpose(x2)
+				)
+				
 			S_pm .+= delta_S_pm
 		
 #=
@@ -750,11 +757,6 @@ function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
     return intensity
 end
 
-# FOR TESTS ONLY
-#=
-using JLD
-const rdata = eachrow(load("rdata.jld")["content"])
-=#
 
 function get_integration_method(lat::geom.PyroPrimitive, integral_params::IntegrationParameters)
     nsample = nothing
@@ -764,10 +766,18 @@ function get_integration_method(lat::geom.PyroPrimitive, integral_params::Integr
 
     if integral_params.integration_method == "MC"
         nsample = integral_params.n_K_samples
-        getp = (_)-> B *  (SVector{3}(rand(3)).-0.5)
+        getp = (_)-> B * (SVector{3}(rand(3)).-0.5)
+	
+	elseif integral_params.integration_method == "MC-offset"
+        nsample = integral_params.n_K_samples
+        getp = (_)-> B * SVector{3}(rand(3))
+	elseif integral_params.integration_method == "MC-big"
+        nsample = integral_params.n_K_samples
+        getp = (_)-> geom.primitive_recip_basis * (SVector{3}(rand(3)).-0.5)
+	
     elseif integral_params.integration_method == "grid"
         # round to next largest cube
-        nk = Int(ceil(integral_params.n_K_samples^(1/3)))
+        nk = Int(ceil(integral_params.n_K_samples^(1/3) ))
         nsample = (nk^3)::Int
         getp = (idx)-> B* ( SVector{3}(
             [ div(idx, nk^2), div(idx, nk) % nk, idx % nk ]

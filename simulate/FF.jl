@@ -60,7 +60,7 @@ function sim_factory(N::Int, Jpm::Float64)
 end
 
 
-Jpm = -0.04
+Jpm = 0.04
 
 simlist = map(
 N->sim_factory(N, Jpm),

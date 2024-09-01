@@ -32,12 +32,13 @@ const high_symmetry_points = Dict(
     "U2"=> [0.25,1.0, 0.25]
 )
 
-ip = IntegrationParameters(n_K_samples=NK, integration_method="MC", broaden_factor=2 )
+ip = IntegrationParameters(n_K_samples=NK, integration_method="grid", broaden_factor=2 )
 
 ofname="$(name)%method=$(ip.integration_method)%N=$(ip.n_K_samples)%By=$(bx)at$(point).png"
 
 const Q = SVector{3}(high_symmetry_points[point])
-const myB = @SVector [0,bx, 0]
+const myB = @SVector [0.0,bx, 0.0]
+#const my_Jpm = -0.02
 const my_Jpm = -0.02
 
 
@@ -50,9 +51,11 @@ Egrid = collect(range(0.6,1.4,50));
 lats = [
     geom.PyroPrimitive(1,1,1),
     geom.PyroPrimitive(2,1,1),
-    geom.PyroPrimitive(3,1,1),
-    geom.PyroPrimitive(2,2,1),
-    geom.PyroPrimitive(2,2,2)
+    geom.PyroPrimitive(1,2,1),
+    geom.PyroPrimitive(1,1,2),
+#    geom.PyroPrimitive(3,1,1),
+#    geom.PyroPrimitive(2,2,1),
+#    geom.PyroPrimitive(2,2,2)
 ]
 
 zero_A(lat::geom.PyroPrimitive) = zeros(Float64, div(length(lat.tetra_sites), 2), 4)
@@ -69,7 +72,7 @@ SimulationParameters("$(l.L) rand gauge",
     A=zero_A(l), #+ randgauge(l),
     Jpm=my_Jpm,
     B=myB,
-    n_samples=50
+    n_samples=1000
     )
     for l in lats
     ]
@@ -79,7 +82,7 @@ SimulationParameters("$(l.L) rand gauge",
 l0 = 0.12708881513042514
 print("Compiling models...  ")
 csimlist = [ CompiledModel(s, l0) for s in simlist]
-println(collect(cs.lambda for cs in csimlist))
+println(collect([calc_lambda(csim) for csim in csimlist]))
 print("Done!")
 
 
