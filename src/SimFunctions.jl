@@ -158,7 +158,6 @@ function calc_spectral_weight_along_path(
     
     p = Progress(num_K,desc="Spectral weight: ")
 
-    tmp_intensity = Sqω_set(Egrid)
 
 
     Threads.@threads for I = 1:num_K
