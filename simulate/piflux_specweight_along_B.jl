@@ -6,7 +6,7 @@ Egrid=collect(range(0,3.2,150))
 lat_πflux = geom.PyroPrimitive(2,2,1)
 A_piflux = construct_landau_gauge(lat_πflux, [0 0 0 π; 0 π 0 π; 0 0 0 0])
 
-Jpm = 0.05
+const Jpm = 0.05
 
 const Bc = sqrt(9*Jpm/5)
 

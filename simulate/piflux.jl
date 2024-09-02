@@ -6,7 +6,10 @@ magnetic_fields = [
     [1,1,1]*0.1/√3, [0,1,1]*0.1/√2,
     ]
 
-Jpm = 0.3
+const Jpm = 0.3
+const Bc = sqrt(9*Jpm/5)
+
+@assert all( norm(b) < Bc for b in magnetic_fields)
 
 lat = geom.PyroPrimitive(2,2,1)
 
@@ -34,10 +37,10 @@ for (i, sim) in enumerate(simlist)
         data_dir="output",
         figure_dir="figures/",
         sim=sim, 
-        integral_params=integration_settings["very_slow"],
+        integral_params=integration_settings["slow"],
         k_density_spinon_dispersion=120,
-        calc_specweight=false,
-        calc_integrated=false
+        calc_specweight=true,
+        calc_integrated=true
         )
 end
 
