@@ -11,7 +11,11 @@ Returns the ratio of g0 to g1 in the special case B || [111], given a particular
 Φ0, the flux on plaquette 0 
 The other three plaquettes have flux -Φ0/3
 """
-g0_g123_ratio_from_flux(desired_Φ0) = (1-4*cos(desired_Φ0/3)^2)^-1
+g0_g123_ratio_from_flux(desired_Φ0) = -sin((desired_Φ0-π)/3)/sin(desired_Φ0-π)
+
+
+#old, broken
+#g0_g123_ratio_from_flux(desired_Φ0) = (1-4*cos(desired_Φ0/3)^2)^-1
 
 """
 FF_111_B(desired_Φ, Jpm)
@@ -22,10 +26,10 @@ x = g0/g1 <0
 Returns the (111) field needed to realise the prescribed flux
 """
 function FF_111_B(desired_Φ0, Jpm)
-    # x = Φ0 -> ( 1 - 2*cos((π/2 - Φ0)*2/3) )^-1;
+    # x = g0/g1
     xp = g0_g123_ratio_from_flux(desired_Φ0)
-    
-    B = sqrt(Jpm* 6*(1-xp)/ (xp*5/9 - 5) )
+	B = (3* sqrt(6/5) * sqrt(Jpm - Jpm * xp))/sqrt(18 - xp)
+    #B = sqrt(Jpm* 6*(1-xp)/ (xp*5/9 - 5) )
     return B
 end
 
@@ -60,7 +64,7 @@ function sim_factory(N::Int, Jpm::Float64)
 end
 
 
-Jpm = 0.04
+Jpm = 0.01
 
 simlist = map(
 N->sim_factory(N, Jpm),

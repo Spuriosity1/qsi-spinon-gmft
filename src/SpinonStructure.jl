@@ -557,13 +557,21 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
                 exp(-2im*(p)'* (geom.pyro[μ]+geom.pyro[ν]))
                 )*exp(1im*(csim.sim.A[jA,μ]+csim.sim.A[jpA, ν])) * x3*x4'
 			S_pp .+= delta_S_pp
-
+=#
 
 			if g_tensor !== nothing
+				#=
 				delta_S_xx =  0.5*real.(delta_S_pp .+ delta_S_pm)
 				delta_S_xy =  0.5*imag.(delta_S_pp .- delta_S_pm)
 				delta_S_yx =  0.5*imag.(delta_S_pp .+ delta_S_pm)
 				delta_S_yy = -0.5*real.(delta_S_pp .- delta_S_pm)
+				=#
+
+
+				delta_S_xx =  0.5*real.(+ delta_S_pm)
+				delta_S_xy =  0.5*imag.(- delta_S_pm)
+				delta_S_yx =  0.5*imag.(+ delta_S_pm)
+				delta_S_yy = -0.5*real.(- delta_S_pm)
 
 				R1 = g_tensor * geom.axis[μ]
 				R2 = g_tensor * geom.axis[ν]
@@ -573,7 +581,7 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 				S_magnetic .+=  R1[:,2]' * QQ_tensor * R2[:,1] .* delta_S_yx
 				S_magnetic .+=  R1[:,2]' * QQ_tensor * R2[:,2] .* delta_S_yy
 			end
-=#			
+			
         end
     end
     E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}

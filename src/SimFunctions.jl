@@ -262,7 +262,7 @@ end
 
 
 # single-threaded version
-function calc_integrated_S(
+function calc_integrated_S(;
     csim::CompiledModel,
     ip::IntegrationParameters,
     Egrid::Vector{Float64},
@@ -318,8 +318,7 @@ function integrated_fieldsweep(output_dir::String;
     
     @Threads.threads for J=1:num_B
         this_sim = sim_factory(magnetic_field_strengths[J])::SimulationParameters
-        Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(output_dir,
-                                                            csim=this_sim,
+	Spm_res, Spp_res, Smagnetic_res = calc_integrated_S(                                                          csim=CompiledModel(this_sim),
                                                             ip=ip,
                                                             Egrid=Egrid,
                                                             g_tensor=g_tensor

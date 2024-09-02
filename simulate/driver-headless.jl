@@ -23,11 +23,11 @@ function run_sim(;data_dir, figure_dir,
 
 
     println("Calculating large-N spinon mass")
-    lambda = calc_lambda(sim) + fudge_lambda
+	csim = CompiledModel(sim)
     
 	println("Computing spinon dispersions...")
 	# compute spinons
-	d = calc_spinons_along_path(data_dir, sim=sim, λ=lambda, path=path)
+	d = calc_spinons_along_path(data_dir, csim=csim, path=path)
 		
 	datafiles = []
 
@@ -44,8 +44,7 @@ function run_sim(;data_dir, figure_dir,
 	if calc_specweight
 	    @printf("Running specweight simulation...\n")
 	    f = calc_spectral_weight_along_path(data_dir, 
-	    sim=sim,
-        λ=lambda,
+	    sim=csim,
 	    ip=integral_params, 
 	    Egrid=Egrid, path=path, g_tensor=G)
 	    # f = data_dir*"/SQW"*sim_identifier(sim)*".jld"
@@ -60,8 +59,7 @@ function run_sim(;data_dir, figure_dir,
 	if calc_integrated
 	    @printf("Running BZ integrated specweight simulation...\n")
 	    f = calc_integrated_specweight(data_dir, 
-	    sim=sim,
-		λ=lambda,
+	    csim=sim,
 	    ip=integral_params, 
 	    Egrid=Egrid, g_tensor=G)
 	    # f = data_dir*"/SQW"*sim_identifier(sim)*".jld"
