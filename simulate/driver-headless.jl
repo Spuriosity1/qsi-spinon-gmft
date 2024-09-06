@@ -59,7 +59,7 @@ function run_sim(;data_dir, figure_dir,
 	if calc_integrated
 	    @printf("Running BZ integrated specweight simulation...\n")
 	    f = calc_integrated_specweight(data_dir, 
-	    csim=sim,
+	    csim=csim,
 	    ip=integral_params, 
 	    Egrid=Egrid, g_tensor=G)
 	    # f = data_dir*"/SQW"*sim_identifier(sim)*".jld"

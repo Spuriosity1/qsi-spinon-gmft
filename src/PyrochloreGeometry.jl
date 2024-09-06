@@ -4,10 +4,9 @@ export PyroPrimitive
 export tetra_idx, tetra_IDX
 export spin_sl, spin_idx
 export get_hexagons, get_dual_fcc_locations
-export A_sites
+export A_sites, B_sites
 export lattice_vectors, reciprocal_basis
 
-using StaticArrays: LinearAlgebra
 using StaticArrays
 
 const Vec3 = SVector{3,Int64};
@@ -19,7 +18,7 @@ const MVec3_F64 = MVector{3, Float64};
 
 
 
-pyro = map(x->SVector{3,Int}(x), [
+const pyro = map(x->SVector{3,Int}(x), [
      [ 1,  1,  1],
      [ 1, -1, -1],
      [-1,  1, -1],
@@ -29,18 +28,18 @@ pyro = map(x->SVector{3,Int}(x), [
 # r = [pyro0]*0.125  pyro1]*0.125 
 #                               pyro2]*0.125  pyro3]*0.125]
 
-diamond = map(x->SVector{3,Int}(x),[
+const diamond = map(x->SVector{3,Int}(x),[
     [0, 0, 0], [2, 2, 2]
 ])
 
-fcc_Dy = map(x->SVector{3,Int}(x),[
+const fcc_Dy = map(x->SVector{3,Int}(x),[
     [0, 0, 0],
     [0, 4, 4],
     [4, 0, 4],
     [4, 4, 0]
     ])
 
-fcc_Ti = map(x->SVector{3,Int}(x),[
+const fcc_Ti = map(x->SVector{3,Int}(x),[
     [4, 4, 4],
     [4, 0, 0],
     [0, 4, 0],
@@ -48,7 +47,7 @@ fcc_Ti = map(x->SVector{3,Int}(x),[
     ])
 
 
-plaqt = map(y->map(x->SVector{3,Int}(x),y),[
+const plaqt = map(y->map(x->SVector{3,Int}(x),y),[
     [
         [ 0, -2,  2],
         [ 2, -2,  0],
@@ -82,12 +81,12 @@ plaqt = map(y->map(x->SVector{3,Int}(x),y),[
     ])
 
 
-S2 = sqrt(2)
-S3 = sqrt(3)
-S6 = sqrt(6)
+const S2 = sqrt(2)
+const S3 = sqrt(3)
+const S6 = sqrt(6)
 
 # Local axes [sl][1,2,3]
-axis = map(x->SMatrix{3,3,Float64}(reduce(hcat,x)),[
+const axis = map(x->SMatrix{3,3,Float64}(reduce(hcat,x)),[
     [[ 1, 1,-2]./S6, [-1, 1, 0]./S2, [ 1, 1, 1]./S3],
     [[ 1,-1, 2]./S6, [-1,-1, 0]./S2, [ 1,-1,-1]./S3],
     [[-1, 1, 2]./S6, [ 1, 1, 0]./S2, [-1, 1,-1]./S3],
@@ -164,6 +163,10 @@ function A_sites(lat::PyroGeneric)
 end
 
 
+function B_sites(lat::PyroGeneric)
+    L = div( length(lat.tetra_sites), 2)
+    return lat.tetra_sites[L+1:end]
+end
 
 
 
@@ -465,7 +468,7 @@ end
 function wrap_BZ(lat::PyroPrimitive, Q::SVector{3,Float64})
     B = reciprocal_basis(lat)
     Binv = lattice_vectors(lat)'/(2π)
-    # return B *( mod.(Binv * Q .+0.5, 1) .- 0.5)
+    #return B *( mod.(Binv * Q .+0.5, 1) .- 0.5)
 	return B *( mod.(Binv * Q , 1) )
 end
 

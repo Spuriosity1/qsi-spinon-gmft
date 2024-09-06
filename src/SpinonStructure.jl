@@ -524,24 +524,26 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 			# CERTAINTIES:
 			#
 			# I   x1 on the unprimed coords must be conjugated
-			#     relative to x2 on unprimed coords, or else gauge invariance 
+			#     relative to x2 on unprimed coords, or else break gauge 
+            #     invariance 
 			#     A \to A + dΓ
 			#     U_{rl} \to e^{iΓ_r} U_{rl}
 			# II  this conjugation of x1 x2* must be consistent relative to 
 			#     this sign of A
-			# III Remains gauge invariant only as a function of p1-p2
+            # III The form e^iA_{rA,rAp} e^-iA_{rA+μ,rAp+ν} is certainly correct
+            # IV  The e^{-2 p2} 
+			# IV  Remains gauge invariant only as a function of p1-p2
             
             delta_S_pm = (
 			# This line is fixed by ginvariance:
 				#exp(1im* ( - p2)'* (2*geom.pyro[μ]-2*geom.pyro[ν])) 
-				exp(1im* (  -2*p2)'* (geom.pyro[μ]-geom.pyro[ν])) 
 			# idk about these signs
-                * exp(1im*(Q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν]))
+                exp(1im*(Q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν]))
 			# sign is free relative to ginvariance
                 * exp(1im*( p1-p2)'*(rA-rpA)) 
 			# sign fixed relative to one another
-				*exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))
-				*x1*transpose(x2)
+				*exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))*x1*transpose(x2)
+				*exp(1im* (  -2*p2)'* (geom.pyro[μ]-geom.pyro[ν])) 
 				)
 				
 			S_pm .+= delta_S_pm

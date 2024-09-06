@@ -32,7 +32,7 @@ const high_symmetry_points = Dict(
     "U2"=> [0.25,1.0, 0.25]
 )
 
-ip = IntegrationParameters(n_K_samples=NK, integration_method="grid", broaden_factor=2 )
+ip = IntegrationParameters(n_K_samples=NK, integration_method="MC", broaden_factor=2 )
 
 ofname="$(name)%method=$(ip.integration_method)%N=$(ip.n_K_samples)%By=$(bx)at$(point).png"
 
