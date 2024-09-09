@@ -21,7 +21,7 @@ const NCHECK=100
 #     "ultra_slow" => IntegrationParameters(n_K_samples=100000,broadening_dE=0.02)
 # )
 
-lat = geom.PyroPrimitive(1,1,1)
+lat = geom.PyroPrimitive(2,3,4)
 
 bfield = [0.1,0.4,0.9]
 #bfield = [0.,0.,0.]
@@ -55,6 +55,9 @@ end
 
 
 n_failures = 0;
+
+
+
 println("Testing M's gauge convariance for local gauges... (0-flux)")
 @showprogress for n=1:NCHECK  
     Q = SVector{3}(rand(3))*2π;
@@ -108,9 +111,13 @@ println("Testing M's gauge covariance for random large gauges...")
 	if norm(diff) > 1e-10
         println("TEST FAILED: gauge transform not gauge")
         display(norm.(diff))
-        global n_failures += 1;
+        global n_failures += 1
     end
 end
+
+
+
+
 
 
 if n_failures > 0

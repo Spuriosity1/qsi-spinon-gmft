@@ -13,6 +13,7 @@ using Plots
 
 if length(ARGS) < 3
     println("USAGE: name point bx [NK]")
+    exit(1)
 end
 
 name = ARGS[1]
@@ -37,7 +38,7 @@ const high_symmetry_points = Dict(
     "U2"=> [0.25,1.0, 0.25]
 )
 
-ip = IntegrationParameters(n_K_samples=NK, integration_method="MC", broaden_factor=2 )
+ip = IntegrationParameters(n_K_samples=NK, integration_method="grid", broaden_factor=2 )
 
 ofname="$(name)%method=$(ip.integration_method)%N=$(ip.n_K_samples)%By=$(bx)at$(point).png"
 
@@ -53,7 +54,7 @@ Egrid = collect(range(0.6,1.4,50));
 
 #lat = geom.PyroPrimitive(1,2,3)
 #lat = geom.PyroPrimitive(1,1,1)
-lat = geom.PyroPrimitive(2,2,2)
+lat = geom.PyroPrimitive(2,3,2)
 
 zero_A(lat::geom.PyroPrimitive) = zeros(Float64, div(length(lat.tetra_sites), 2), 4)
 piflux_A(lat::geom.PyroPrimitive) = construct_landau_gauge(lat, [0 0 0 π; 0 π 0 π; 0 0 0 0])
@@ -99,7 +100,7 @@ print("Done!")
 
 p = plot()
 for cs in csimlist
-    res = spectral_weight(Q, Egrid, cs, ip);
+    res = spectral_weight(Q, Egrid, cs, ip,show_progress=true);
     # @assert res.N == ip.n_K_samples
 
     mean = real.(res.Sqω_pm)./res.N

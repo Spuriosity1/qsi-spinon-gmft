@@ -9,7 +9,7 @@ OUTDIR="testoutput"
 
 for b in `echo 0.0 0.2`; do
 	#for pt in `echo \\\\Gamma X W L K U`; do
-	for pt in `echo \\\\Gamma X X2 W W2 K L U`; do
+	for pt in `echo L W \\\\Gamma K X U`; do
 		echo "Bx=${b}, measuring ${pt} point..."
 		julia $JFILE $1 "${pt}" "${b}" $2 > "tmp/$pt_$1$2.out" 
 	done

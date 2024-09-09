@@ -468,7 +468,6 @@ end
 function wrap_BZ(lat::PyroPrimitive, Q::SVector{3,Float64})
     B = reciprocal_basis(lat)
     Binv = lattice_vectors(lat)'/(2π)
-    #return B *( mod.(Binv * Q .+0.5, 1) .- 0.5)
 	return B *( mod.(Binv * Q , 1) )
 end
 

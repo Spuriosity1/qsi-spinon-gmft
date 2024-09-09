@@ -483,9 +483,8 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
   
     E1, U1 = spinon_dispersion( p1, csim)
-    p2 = geom.wrap_BZ(csim.sim.lat, p1-Q)
-	Q = geom.wrap_BZ(csim.sim.lat, Q)
-	#p2 = p1+Q
+    #p2 = geom.wrap_BZ(csim.sim.lat, p1+Q) # p1+Q
+	p2 = p1+Q
 
     E2, U2 = spinon_dispersion( p2, csim)
     # Both p's must appear with the same sign, or else we break p-> p + delta 
@@ -531,16 +530,13 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 			# II  this conjugation of x1 x2* must be consistent relative to 
 			#     this sign of A
             # III The form e^iA_{rA,rAp} e^-iA_{rA+μ,rAp+ν} is certainly correct
-            # IV  The e^{-2 p2} 
-			# IV  Remains gauge invariant only as a function of p1-p2
+            # IV  Issue is present even when I restrict to μ=ν, suggests issue with rA
             
             delta_S_pm = (
-			# This line is fixed by ginvariance:
-				#exp(1im* ( - p2)'* (2*geom.pyro[μ]-2*geom.pyro[ν])) 
-			# idk about these signs
-                exp(1im*(Q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν]))
 			# sign is free relative to ginvariance
-                * exp(1im*( p1-p2)'*(rA-rpA)) 
+                exp(1im*(Q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν])) # +Q.rA
+			# sign is free relative to ginvariance
+                * exp(+1im*( p1-p2)'*(rA-rpA)) # p12+
 			# sign fixed relative to one another
 				*exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))*x1*transpose(x2)
 				*exp(1im* (  -2*p2)'* (geom.pyro[μ]-geom.pyro[ν])) 
@@ -586,7 +582,7 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 			
         end
     end
-    E = [e1 + e2 for e2 in E2, e1 in E1]::Matrix{Float64}
+    E = [e1 + e2 for e1 in E1, e2 in E2]::Matrix{Float64}
     return E, S_pm, S_pp, S_magnetic
 end
 
@@ -603,20 +599,11 @@ function broadened_peaks!(
 	Egrid::Vector{Float64},
 	dE::Float64
 	)
-#=
-	for (E,S) in zip(Enm,Snm)
-		for (i,e) in enumerate(Egrid)
-            tmp = S*Lorentzian(e-E, dE)::Float64
-			Sqω[i] += tmp
-			Sqω2[i] += tmp*tmp
-        end
-	end
-    =#
 
     for (i,e) in enumerate(Egrid)
         tmp=0.0
         for (E,S) in zip(Enm,Snm)
-			tmp += (S*Lorentzian(e-E, dE))::ComplexF64
+			tmp += (S*gaussian(e-E, dE))::ComplexF64
 		end
         Sqω[i] += tmp
         Sqω2[i] += tmp^2
@@ -637,7 +624,7 @@ function broadened_peaks!(
     for (i,e) in enumerate(Egrid)
         tmp=0.0im
         for (E,S) in zip(Enm,Snm)
-			tmp += (S*Lorentzian(e-E, dE))::ComplexF64
+			tmp += (S*gaussian(e-E, dE))::ComplexF64
 		end
         Sqω[i] += tmp
         Sqω2[i] += real(tmp)^2
@@ -657,7 +644,7 @@ function broadened_peaks!(
 
 	for (E,S) in zip(Enm,Snm)
 		for (i,e) in enumerate(Egrid)
-            Sqω[i] += S*Lorentzian(e-E, dE)::Float64
+            Sqω[i] += S*gaussian(e-E, dE)::Float64
         end
 	end
 end
@@ -673,7 +660,7 @@ function broadened_peaks!(
 
 	for (E,S) in zip(Enm,Snm)
 		for (i,e) in enumerate(Egrid)
-            Sqω[i] += S*Lorentzian(e-E, dE)
+            Sqω[i] += S*gaussian(e-E, dE)
 		end
 	end
 end
@@ -756,12 +743,13 @@ This performs a Monte Carlo integral of the spin-spin correlators <S+S-> and
 function spectral_weight(q::Vec3_F64, Egrid::Vector{Float64},
 	csim::CompiledModel,
     integral_params::IntegrationParameters,
-	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
+	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing;
+    show_progress=false)
     
     intensity = Sqω_set(Egrid)
  
     spectral_weight!(intensity, 
-        q, csim, integral_params, g_tensor)
+        q, csim, integral_params, g_tensor,show_progress=show_progress)
 
 
     return intensity
@@ -792,6 +780,13 @@ function get_integration_method(lat::geom.PyroPrimitive, integral_params::Integr
         getp = (idx)-> B* ( SVector{3}(
             [ div(idx, nk^2), div(idx, nk) % nk, idx % nk ]
             ) ./nk ) 
+    elseif integral_params.integration_method == "grid-big"
+        # round to next largest cube
+        nk = Int(ceil(integral_params.n_K_samples^(1/3) ))
+        nsample = (nk^3)::Int
+        getp = (idx)-> geom.primitive_recip_basis* ( SVector{3}(
+            [ div(idx, nk^2), div(idx, nk) % nk, idx % nk ]
+            ) ./nk ) 
     else
         throw("unrecognised integration method")
     end
@@ -818,14 +813,20 @@ function spectral_weight!(
     q::Vec3_F64, 
 	csim::CompiledModel,
     integral_params::IntegrationParameters,
-	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
+	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing;
+    show_progress=false)
 
     initzeros!(intensity) 
 
     deltaE = maximum(intensity.Egrid[2:end] - intensity.Egrid[1:end-1])
 
     nsample, getp = get_integration_method(csim.sim.lat, integral_params)
-    
+  
+    prog = nothing
+    if show_progress
+        prog=Progress(nsample)
+    end
+
     for idx = 0:(nsample-1)
         p =  getp(idx)       # experimental
 
@@ -858,7 +859,11 @@ function spectral_weight!(
             
         end
 
+
+        if show_progress next!(prog) end
     end
+
+    if show_progress finish!(prog) end
 end
 
 """
