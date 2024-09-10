@@ -465,6 +465,7 @@ end
 end
 
 
+
 """
 ```
 	corr_at(q::Vec3_F64, p::Vec3_F64, sim::AbstractCompiledHamiltonian)
@@ -492,7 +493,8 @@ Notes:
 
 """
 function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
-	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
+	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing
+    )
   
     E1, U1 = spinon_dispersion( p1, csim)
     #p2 = geom.wrap_BZ(csim.sim.lat, p1+Q) # p1+Q
@@ -522,7 +524,12 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 
     A_sites = geom.A_sites(csim.sim.lat)
     for μ=1:4, ν=1:4
-        for (jA, rA) in enumerate(A_sites), (jpA, rpA) in enumerate(A_sites)
+        if g_tensor !== nothing
+            R1 = g_tensor * geom.axis[μ]
+            R2 = g_tensor * geom.axis[ν]
+        end
+
+        for (jA, rA) in enumerate(A_sites), (jpA, rpA) in enumerate(A_sites) 
             jB = geom.tetra_idx(csim.sim.lat, rA + 2*geom.pyro[μ])::Int
             jpB = geom.tetra_idx(csim.sim.lat, rpA + 2*geom.pyro[ν])::Int
 
@@ -531,56 +538,41 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 			x1 = conj.(U1[jA, :]) .* U1[jpA, :] ./ (2*E1) 
             # the "l'" bit
 			x2 = U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
-
-            
+ 
             delta_S_pm = (
-			# sign is free relative to ginvariance
-                exp(1im*(Q)'*(rA + geom.pyro[μ] - rpA - geom.pyro[ν])) # +Q.rA
-			# sign is free relative to ginvariance
-                * exp(+1im*( p1-p2)'*(rA-rpA)) # p12+
-			# sign fixed relative to one another
-				*exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))*x1*transpose(x2)
-				*exp(1im* (  -2*p2)'* (geom.pyro[μ]-geom.pyro[ν])) 
+				exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))*x1*transpose(x2)
+				*exp(1im* ( Q -2*p2)'* (geom.pyro[μ]-geom.pyro[ν])) 
 				)
 				
 			S_pm .+= delta_S_pm
-		
+            
 			# <S+ S+>
-            # lol it's zero??
-            # the "l" bit
+            
             x3 = conj.(U1[jA, :]) .* U1[jpB, :] ./ (2*E1) 
-            # the "l'" bit
-            x4 = U2[jpA, :] .* conj(U2[jB, :]) ./ (2*E2)
+            x4 = conj.(U2[jpA, :]) .* U2[jB, :] ./ (2*E2)
+
             delta_S_pp = (
-                exp(1im*(Q)'* (rA + geom.pyro[μ] - rpA - geom.pyro[ν]))* 
-                exp(+1im*( p1-p2)'*(rA-rpA)) * # UNSURE HERE
-                exp(-2im*p1'* geom.pyro[μ])*
-                exp(-2im*p2'*geom.pyro[ν]))*
+                exp(1im*(Q)'* ( geom.pyro[μ] - geom.pyro[ν]))* 
+                exp(-2im*p2'* geom.pyro[μ])*
+                exp(-2im*p1'*geom.pyro[ν]))*
                 x3*transpose(x4)*
                 exp(1im*(csim.sim.A[jA,μ]+csim.sim.A[jpA, ν]))
 			S_pp .+= delta_S_pp
+            
 
 			if g_tensor !== nothing
-				#=
+				
 				delta_S_xx =  0.5*real.(delta_S_pp .+ delta_S_pm)
 				delta_S_xy =  0.5*imag.(delta_S_pp .- delta_S_pm)
 				delta_S_yx =  0.5*imag.(delta_S_pp .+ delta_S_pm)
 				delta_S_yy = -0.5*real.(delta_S_pp .- delta_S_pm)
-				=#
 
-
-				delta_S_xx =  0.5*real.(+ delta_S_pm)
-				delta_S_xy =  0.5*imag.(- delta_S_pm)
-				delta_S_yx =  0.5*imag.(+ delta_S_pm)
-				delta_S_yy = -0.5*real.(- delta_S_pm)
-
-				R1 = g_tensor * geom.axis[μ]
-				R2 = g_tensor * geom.axis[ν]
-
-				S_magnetic .+=  R1[:,1]' * QQ_tensor * R2[:,1] .* delta_S_xx
-				S_magnetic .+=  R1[:,1]' * QQ_tensor * R2[:,2] .* delta_S_xy
-				S_magnetic .+=  R1[:,2]' * QQ_tensor * R2[:,1] .* delta_S_yx
-				S_magnetic .+=  R1[:,2]' * QQ_tensor * R2[:,2] .* delta_S_yy
+                S_magnetic .+=  R1[:,1]' * QQ_tensor * (
+                    R2[:,1] .* delta_S_xx + R2[:,2] .* delta_S_xy
+                    )
+                S_magnetic .+=  R1[:,2]' * QQ_tensor * (
+                    R2[:,1] .* delta_S_yx + R2[:,2] .* delta_S_yy
+                    )
 			end
 			
         end
@@ -840,15 +832,15 @@ function spectral_weight!(
                     S_pm_rs, E_rs, intensity.Egrid, deltaE*integral_params.broaden_factor )
 
             intensity.N += 1
-            #broadened_peaks!(intensity.Sqω_pp, 
-             #       S_pp_rs, E_rs, intensity.Egrid, deltaE )
+            broadened_peaks!(intensity.Sqω_pp, 
+                    S_pp_rs, E_rs, intensity.Egrid, deltaE )
 
 
-         #   if g_tensor !== nothing
-          #      broadened_peaks!(intensity.Sqω_magnetic, 
-           #         S_magnetic_rs, E_rs, intensity.Egrid, deltaE )
+            if g_tensor !== nothing
+                broadened_peaks!(intensity.Sqω_magnetic, 
+                    S_magnetic_rs, E_rs, intensity.Egrid, deltaE )
 
-            #end	
+            end	
 
             intensity.bounds[1] = min(intensity.bounds[1], reduce(min,  E_rs) ) 
             intensity.bounds[2] = max(intensity.bounds[2], reduce(max,  E_rs) )

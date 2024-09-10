@@ -52,9 +52,9 @@ const my_Jpm = -0.02
 
 Egrid = collect(range(0.6,1.4,50));
 
-#lat = geom.PyroPrimitive(1,2,3)
+lat = geom.PyroPrimitive(1,2,3)
 #lat = geom.PyroPrimitive(1,1,1)
-lat = geom.PyroPrimitive(2,3,2)
+#lat = geom.PyroPrimitive(2,3,2)
 
 zero_A(lat::geom.PyroPrimitive) = zeros(Float64, div(length(lat.tetra_sites), 2), 4)
 piflux_A(lat::geom.PyroPrimitive) = construct_landau_gauge(lat, [0 0 0 π; 0 π 0 π; 0 0 0 0])
@@ -125,7 +125,7 @@ p = plot()
 for (cs,res) in zip(csimlist, results)
 
     mean = real.(res.Sqω_pp)./res.N
-    var = (res.Sqω_pp2./res.N .- mean.*mean)./res.N
+    var = [max(0, v) for v in (res.Sqω_pp2./res.N .- mean.*mean)./res.N]
 
     scale = prod(cs.sim.lat.L)
 
