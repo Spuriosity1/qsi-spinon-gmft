@@ -436,7 +436,6 @@ function spinon_dispersion(k::Vector{Float64}, sim::CompiledModel)
     return sqrt.(2*(ϵ.+ sim.lambda )), U
 end
 
-
 """
     IntegrationParameters(n_K_samples::Int)
 
