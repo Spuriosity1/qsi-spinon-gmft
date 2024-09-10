@@ -40,7 +40,7 @@ const high_symmetry_points = Dict(
 
 ip = IntegrationParameters(n_K_samples=NK, integration_method="grid", broaden_factor=2 )
 
-ofname="$(name)%method=$(ip.integration_method)%N=$(ip.n_K_samples)%By=$(bx)at$(point).png"
+ofname="$(name)%method=$(ip.integration_method)%N=$(ip.n_K_samples)%By=$(bx)at$(point)"
 
 const Q = SVector{3}(high_symmetry_points[point])
 const myB = @SVector [-bx*0.5,bx, bx*0.3]
@@ -96,12 +96,13 @@ csimlist = [ CompiledModel(s, l0) for s in simlist]
 println(collect(cs.lambda for cs in csimlist))
 print("Done!")
 
+results = [spectral_weight(Q, Egrid, cs, ip,show_progress=true) 
+    for cs in csimlist ]
+
 
 
 p = plot()
-for cs in csimlist
-    res = spectral_weight(Q, Egrid, cs, ip,show_progress=true);
-    # @assert res.N == ip.n_K_samples
+for (cs,res) in zip(csimlist, results)
 
     mean = real.(res.Sqω_pm)./res.N
     var = (res.Sqω_pm2./res.N .- mean.*mean)./res.N
@@ -112,12 +113,29 @@ for cs in csimlist
         yerr = sqrt.(var)./scale,
         label=cs.sim.name)
 end
-print("Saving to ")
-println(ofname)
+println("Saving to $(ofname)_pm.png")
 
 title!("these should overlap")
 xlabel!("Energy/Jzz")
 ylabel!("intensity")
-savefig("testoutput/"*ofname)
+savefig("testoutput/$(ofname)_pm.png")
 
 
+p = plot()
+for (cs,res) in zip(csimlist, results)
+
+    mean = real.(res.Sqω_pp)./res.N
+    var = (res.Sqω_pp2./res.N .- mean.*mean)./res.N
+
+    scale = prod(cs.sim.lat.L)
+
+    plot!(Egrid, mean./scale,
+        yerr = sqrt.(var)./scale,
+        label=cs.sim.name)
+end
+println("Saving to $(ofname)_pp.png")
+
+title!("these should overlap")
+xlabel!("Energy/Jzz")
+ylabel!("intensity")
+savefig("testoutput/$(ofname)_pp.png")

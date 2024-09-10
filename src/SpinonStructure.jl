@@ -478,6 +478,19 @@ Returns:
 `E`, an (N, N) matrix of e1 + e2 energies corresponding to Dirac delta peaks
 `Spm`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S-(-k,0)>
 `Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
+
+Notes: 
+
+
+ I   x1 on the unprimed coords must be conjugated
+     relative to x2 on unprimed coords, or else break gauge 
+     invariance 
+     A \to A + dΓ
+     U_{rl} \to e^{iΓ_r} U_{rl}
+ II  this conjugation of x1 x2* must be consistent relative to 
+     this sign of A
+ III The form e^iA_{rA,rAp} e^-iA_{rA+μ,rAp+ν} is certainly correct
+
 """
 function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing)
@@ -520,17 +533,6 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
             # the "l'" bit
 			x2 = U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
 
-			# CERTAINTIES:
-			#
-			# I   x1 on the unprimed coords must be conjugated
-			#     relative to x2 on unprimed coords, or else break gauge 
-            #     invariance 
-			#     A \to A + dΓ
-			#     U_{rl} \to e^{iΓ_r} U_{rl}
-			# II  this conjugation of x1 x2* must be consistent relative to 
-			#     this sign of A
-            # III The form e^iA_{rA,rAp} e^-iA_{rA+μ,rAp+ν} is certainly correct
-            # IV  Issue is present even when I restrict to μ=ν, suggests issue with rA
             
             delta_S_pm = (
 			# sign is free relative to ginvariance
@@ -544,18 +546,20 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 				
 			S_pm .+= delta_S_pm
 		
-#=
 			# <S+ S+>
+            # lol it's zero??
             # the "l" bit
-            x3 = U1[jA, :] .* conj(U1[jpB, :]) ./ (2*E1) 
+            x3 = conj.(U1[jA, :]) .* U1[jpB, :] ./ (2*E1) 
             # the "l'" bit
             x4 = U2[jpA, :] .* conj(U2[jB, :]) ./ (2*E2)
             delta_S_pp = (
-                exp(1im*(q/2)'* (geom.pyro[μ]-geom.pyro[ν]))*
-                exp(-2im*(p)'* (geom.pyro[μ]+geom.pyro[ν]))
-                )*exp(1im*(csim.sim.A[jA,μ]+csim.sim.A[jpA, ν])) * x3*x4'
+                exp(1im*(Q)'* (rA + geom.pyro[μ] - rpA - geom.pyro[ν]))* 
+                exp(+1im*( p1-p2)'*(rA-rpA)) * # UNSURE HERE
+                exp(-2im*p1'* geom.pyro[μ])*
+                exp(-2im*p2'*geom.pyro[ν]))*
+                x3*transpose(x4)*
+                exp(1im*(csim.sim.A[jA,μ]+csim.sim.A[jpA, ν]))
 			S_pp .+= delta_S_pp
-=#
 
 			if g_tensor !== nothing
 				#=
@@ -828,10 +832,10 @@ function spectral_weight!(
     end
 
     for idx = 0:(nsample-1)
-        p =  getp(idx)       # experimental
+        p1 =  getp(idx)       # experimental
 
         try
-            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p, csim, g_tensor)
+            E_rs, S_pm_rs, S_pp_rs, S_magnetic_rs = corr_at(q, p1, csim, g_tensor)
 
             broadened_peaks!(intensity.Sqω_pm, intensity.Sqω_pm2,
                     S_pm_rs, E_rs, intensity.Egrid, deltaE*integral_params.broaden_factor )
@@ -851,7 +855,7 @@ function spectral_weight!(
             intensity.bounds[2] = max(intensity.bounds[2], reduce(max,  E_rs) )
         catch e
             if e isa DomainError
-                println("Negative dispersion at q=$(q), p=$(p)")
+                println("Negative dispersion at q=$(q), p1=$(p1)")
                 continue
             else
                 throw(e)
