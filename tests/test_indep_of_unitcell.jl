@@ -52,15 +52,8 @@ lats = [
     geom.PyroPrimitive(1,1,1),
     geom.PyroPrimitive(2,1,1),
     geom.PyroPrimitive(2,2,2),
-#    geom.PyroPrimitive(1,2,1),
-#    geom.PyroPrimitive(1,1,2),
-#    geom.PyroPrimitive(3,1,1),
-#    geom.PyroPrimitive(5,1,1),
-    #geom.PyroPrimitive(7,1,1),
-    #geom.PyroPrimitive(1,3,1),
-    #geom.PyroPrimitive(1,1,3),
-    #geom.PyroPrimitive(2,2,1),
-    #geom.PyroPrimitive(2,2,2)
+    geom.PyroPrimitive(1,2,1),
+    geom.PyroPrimitive(3,1,1)
 ]
 
 zero_A(lat::geom.PyroPrimitive) = zeros(Float64, div(length(lat.tetra_sites), 2), 4)
