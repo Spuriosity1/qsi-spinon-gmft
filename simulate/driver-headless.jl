@@ -1,6 +1,5 @@
 using Pkg; Pkg.activate(".")
 include("../src/SimFunctions.jl")
-using Filesystem
 
 function run_sim(;data_dir,
 	sim::SimulationParameters,
