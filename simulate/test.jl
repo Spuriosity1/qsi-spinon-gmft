@@ -20,7 +20,6 @@ for (i, sim) in enumerate(simlist)
     @printf("Running simulation %d of %d\n", i, length(simlist))
     run_sim(
         data_dir="tmp",
-        figure_dir="figures/",
         sim=sim, 
         integral_params=integration_settings["fast"]
         )

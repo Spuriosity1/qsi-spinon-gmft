@@ -2,7 +2,6 @@
 .ipynb_checkpoints
 .virtual_documents
 __pycache__
-output/*
 bin
 etc
 include

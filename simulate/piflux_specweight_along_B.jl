@@ -39,7 +39,7 @@ G = @SMatrix [0. 0. 0.;
 	 0. 0. 0.;
 	 1. 0. 0.]
 
-data_dir="output/"
+data_dir="../output/"
 
 f = integrated_fieldsweep(data_dir, 
                           sim_factory=sim_factory,

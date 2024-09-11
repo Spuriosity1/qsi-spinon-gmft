@@ -14,7 +14,7 @@ G = @SMatrix [0. 0. 0.;
 	 0. 0. 0.;
 	 1. 0. 0.]
 
-data_dir="output/"
+data_dir="../output/"
 
 field_direction = (@SVector [1.,1.,0.])/√3
 

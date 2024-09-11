@@ -1,15 +1,20 @@
 using Pkg; Pkg.activate(".")
 include("../src/SimFunctions.jl")
+using Filesystem
 
-function run_sim(;data_dir, figure_dir,
+function run_sim(;data_dir,
 	sim::SimulationParameters,
 	integral_params::IntegrationParameters,
 	calc_specweight=true,
 	calc_integrated=true,
 	k_density_spinon_dispersion=60,
-	k_density_specweight=20,
-	fudge_lambda=0.
+	k_density_specweight=20
 	)
+
+	# create output if necessary 
+	if !isdir(data_dir)
+		mkpath(data_dir)
+	end
 
 
 	G = @SMatrix [0. 0. 0.;
@@ -18,17 +23,20 @@ function run_sim(;data_dir, figure_dir,
 
 	 dfiles = Dict()
 
-	path = generate_path(geom.high_symmetry_points, 
+	path_spinon = generate_path(geom.high_symmetry_points, 
 	    split("\\Gamma X W K \\Gamma L U W"), 
 		points_per_unit=k_density_spinon_dispersion, K_units=2π/8)
 
+	path_specweight = generate_path(geom.high_symmetry_points, 
+	    split("\\Gamma X W K \\Gamma L U W"), 
+		points_per_unit=k_density_specweight, K_units=2π/8)
 
     println("Calculating large-N spinon mass")
 	csim = CompiledModel(sim)
     
 	println("Computing spinon dispersions...")
 	# compute spinons
-	d = calc_spinons_along_path(data_dir, csim=csim, path=path)
+	d = calc_spinons_along_path(data_dir, csim=csim, path=path_spinon)
 		
 	datafiles = []
 
@@ -47,7 +55,7 @@ function run_sim(;data_dir, figure_dir,
 	    f = calc_spectral_weight_along_path(data_dir, 
 	    sim=csim,
 	    ip=integral_params, 
-	    Egrid=Egrid, path=path, g_tensor=G)
+	    Egrid=Egrid, path=path_specweight, g_tensor=G)
 	    # f = data_dir*"/SQW"*sim_identifier(sim)*".jld"
 	    push!(datafiles, f)
 	    println("Saving data to ",f)

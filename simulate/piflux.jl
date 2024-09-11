@@ -34,8 +34,7 @@ end
 for (i, sim) in enumerate(simlist)
     @printf("Running simulation %d of %d\n", i, length(simlist))
     run_sim(
-        data_dir="output",
-        figure_dir="figures/",
+        data_dir="../output",
         sim=sim, 
         integral_params=integration_settings["fast"],
         k_density_spinon_dispersion=120,
