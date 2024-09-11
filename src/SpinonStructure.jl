@@ -96,11 +96,19 @@ Members:
 """
 struct CompiledHamiltonian <: AbstractCompiledHamiltonian
     sim::SimulationParameters
-    # sparse matrix of pairs [C, x1-x2] such that the upper diagonal part of H[J1, J2] = C * exp(1.0im*K*(x1-x2)
+    # sparse matrix of pairs [C, delta] such that the upper diagonal part of
+    # H[J1, J2](K) = C * exp(1.0im*K*delta)
     coeff_I::Array{Int64}
     coeff_J::Array{Int64}
     coeff_C::Array{ComplexF64}
     coeff_delta::Matrix{Float64}
+    # a precomputed set of indices 
+    # geom.tetra_idx(sim.lat, sim.lat.tetra_sites[jA] + 2*geom.pyro[mu]) 
+    # == nn_index_A[jA, mu]
+    nn_index_A::Vector{Vector{Int64}}
+    # geom.tetra_idx(sim.lat, sim.lat.tetra_sites[jB] - 2*geom.pyro[mu]) 
+    # == nn_index_B[jA, mu]
+    nn_index_B::Vector{Vector{Int64}}
 
     
     function CompiledHamiltonian(_sim::SimulationParameters)
@@ -112,7 +120,19 @@ struct CompiledHamiltonian <: AbstractCompiledHamiltonian
         compile_XXZ!(_sim, I, J, C, delta)
         compile_Sx!(_sim, I, J, C, delta)
 
-        new(_sim, I, J, C, reduce(hcat, delta))
+        nn_idx_A = [
+            [geom.tetra_idx(_sim.lat, rA + 2*geom.pyro[mu]) for mu=1:4]
+            for rA in geom.A_sites(_sim.lat) 
+        ]
+        
+        nn_idx_B = [
+            [geom.tetra_idx(_sim.lat, rA - 2*geom.pyro[mu]) for mu=1:4]
+            for rA in geom.B_sites(_sim.lat) 
+        ]
+
+        new(_sim,
+        I, J, C, reduce(hcat, delta),
+        nn_idx_A, nn_idx_B)
     end
 end
 
@@ -125,30 +145,41 @@ struct CompiledModel <: AbstractCompiledHamiltonian
     coeff_J::Array{Int64}
     coeff_C::Array{ComplexF64}
     coeff_delta::Matrix{Float64}
+    # a precomputed set of indices 
+    # geom.tetra_idx(sim.lat, sim.lat.tetra_sites[jA] + 2*geom.pyro[mu]) 
+    # == nn_index_A[jA, mu]
+    nn_index_A::Vector{Vector{Int64}}
+    # geom.tetra_idx(sim.lat, sim.lat.tetra_sites[jB] - 2*geom.pyro[mu]) 
+    # == nn_index_B[jA, mu]
+    nn_index_B::Vector{Vector{Int64}}
 
     #the selfconsistent spinon mass
     lambda::Float64
     function CompiledModel(_sim::SimulationParameters)
-        cm = CompiledHamiltonian(_sim)
+        ch = CompiledHamiltonian(_sim)
         new(
             _sim,
-            cm.coeff_I,
-            cm.coeff_J,
-            cm.coeff_C,
-            cm.coeff_delta,
-            calc_lambda(cm)
+            ch.coeff_I,
+            ch.coeff_J,
+            ch.coeff_C,
+            ch.coeff_delta,
+            ch.nn_index_A,
+            ch.nn_index_B,
+            calc_lambda(ch)
             )
     end
 
 
     function CompiledModel(_sim::SimulationParameters, lambda::Float64)
-        cm = CompiledHamiltonian(_sim)
+        ch = CompiledHamiltonian(_sim)
         new(
             _sim,
-            cm.coeff_I,
-            cm.coeff_J,
-            cm.coeff_C,
-            cm.coeff_delta,
+            ch.coeff_I,
+            ch.coeff_J,
+            ch.coeff_C,
+            ch.coeff_delta,
+            ch.nn_index_A,
+            ch.nn_index_B,
             lambda
             )
     end
@@ -465,6 +496,17 @@ end
 end
 
 
+"""
+GreenFunction!(G, E, U, i, j)
+
+
+"""
+@inline function GreenFunction!(G, E, U, i, j)
+    for l in eachindex(E)
+        G[l] = conj(U[i, l]) * U[j,l] / (2*E[l])
+    end
+end
+
 
 """
 ```
@@ -517,6 +559,11 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
     delta_S_pp = zeros(ComplexF64, f,f)
     delta_S_mag = [ zeros(Float64, f,f) for _ in [1 1; 1 1] ]
 
+    G1 = zeros(ComplexF64, f)
+    G2 = zeros(ComplexF64, f)
+
+    G3 = zeros(ComplexF64, f)
+    G4 = zeros(ComplexF64, f)
 
     jB =0
     jpB=0
@@ -531,36 +578,53 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
         end
 
         for (jA, rA) in enumerate(A_sites), (jpA, rpA) in enumerate(A_sites) 
-            jB = geom.tetra_idx(csim.sim.lat, rA + 2*geom.pyro[μ])::Int
-            jpB = geom.tetra_idx(csim.sim.lat, rpA + 2*geom.pyro[ν])::Int
+            jB = csim.nn_index_A[jA][μ]
+            jpB = csim.nn_index_A[jpA][ν]
+            #@assert jB == geom.tetra_idx(csim.sim.lat, rA + 2*geom.pyro[μ])::Int
+            #@assert jpB == geom.tetra_idx(csim.sim.lat, rpA + 2*geom.pyro[ν])::Int
 
 			# <S+ S->
-            # the "l" bit
-			x1 = conj.(U1[jA, :]) .* U1[jpA, :] ./ (2*E1) 
-            # the "l'" bit
-			x2 = U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
+            GreenFunction!(G1, E1, U1, jA, jpA)
+			GreenFunction!(G2, E2, U2, jpB, jB)
+
+			#@assert G1 == conj.(U1[jA, :]) .* U1[jpA, :] ./ (2*E1) 
+			#@assert G2 == U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
+
+            for l =1:f, lp=1:f
+                delta_S_pm[l,lp] = G1[l]*G2[lp]
+            end
+            #@assert delta_S_pm == G1*transpose(G2)
  
-            delta_S_pm .= (
-				exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))*x1*transpose(x2)
+            delta_S_pm .*= (
+				exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))
 				*exp(1im* ( Q -2*p2)'* (geom.pyro[μ]-geom.pyro[ν])) 
 				)
 				
 			S_pm .+= delta_S_pm
-            
-			# <S+ S+>
-            
-            x3 = conj.(U1[jA, :]) .* U1[jpB, :] ./ (2*E1) 
-            x4 = conj.(U2[jpA, :]) .* U2[jB, :] ./ (2*E2)
 
-            delta_S_pp .= (
-                exp(1im*(Q)'* ( geom.pyro[μ] - geom.pyro[ν]))* 
-                exp(-2im*p2'* geom.pyro[μ])*
-                exp(-2im*p1'*geom.pyro[ν]))*
-                x3*transpose(x4)*
+            #################################
+			# <S+ S+> 
+            GreenFunction!(G3, E1, U1, jA, jpB)
+			GreenFunction!(G4, E2, U2, jpA, jB)
+
+            #@assert G3 == conj.(U1[jA, :]) .* U1[jpB, :] ./ (2*E1) 
+            #@assert G4 == conj.(U2[jpA, :]) .* U2[jB, :] ./ (2*E2)
+ 
+            for l =1:f, lp=1:f
+                delta_S_pp[l,lp] = G3[l]*G4[lp]
+            end
+            #@assert delta_S_pp == G3*transpose(G4)
+
+            delta_S_pp .*= (
+                exp(1im*(Q - 2*p2)'*  geom.pyro[μ] )*
+                exp(1im*(-Q - 2*p1)'* geom.pyro[ν]))* 
+                #exp(1im*(Q)'* ( geom.pyro[μ] - geom.pyro[ν]))* 
+                #exp(-2im*p2'* geom.pyro[μ])*
+                #exp(-2im*p1'*geom.pyro[ν]))*
                 exp(1im*(csim.sim.A[jA,μ]+csim.sim.A[jpA, ν]))
 			S_pp .+= delta_S_pp
             
-
+#=
 			if g_tensor !== nothing	
                 delta_S_mag[1,1] .=  0.5*real.(delta_S_pp .+ delta_S_pm)
 				delta_S_mag[1,2] .=  0.5*imag.(delta_S_pp .- delta_S_pm)
@@ -573,7 +637,7 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
                 )
 
 			end
-			
+=#			
         end
     end
     E = [e1 + e2 for e1 in E1, e2 in E2]::Matrix{Float64}
