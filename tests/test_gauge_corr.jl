@@ -1,14 +1,13 @@
-using LinearAlgebra
 include("../src/SpinonStructure.jl")
 include("../src/BZMath.jl")
 
 
 using .BZmath
 using .SpinonStructure
+using LaTeXStrings
 using StaticArrays
 using SparseArrays
 using LinearAlgebra
-using BenchmarkTools
 using Plots
 
 if length(ARGS) < 3
@@ -100,7 +99,6 @@ results = [spectral_weight(Q, Egrid, cs, ip,show_progress=true)
     for cs in csimlist ]
 
 
-
 p = plot()
 for (cs,res) in zip(csimlist, results)
 
@@ -113,13 +111,32 @@ for (cs,res) in zip(csimlist, results)
         yerr = sqrt.(var)./scale,
         label=cs.sim.name)
 end
-println("Saving to $(ofname)_pm.png")
+println("Saving to $(ofname)_pm_re.png")
 
-title!("these should overlap")
+title!(L"\rm{Re}\langle S^+S^-\rangle")
 xlabel!("Energy/Jzz")
 ylabel!("intensity")
-savefig("testoutput/$(ofname)_pm.png")
+savefig("testoutput/$(ofname)_pm_re.png")
 
+
+p = plot()
+for (cs,res) in zip(csimlist, results)
+
+    mean = imag.(res.Sqω_pm)./res.N
+    var = (res.Sqω_pm2./res.N .- mean.*mean)./res.N
+
+    scale = prod(cs.sim.lat.L)
+
+    plot!(Egrid, mean./scale,
+        yerr = sqrt.(var)./scale,
+        label=cs.sim.name)
+end
+println("Saving to $(ofname)_pm_im.png")
+
+title!(L"\rm{Im}\langle S^+S^-\rangle")
+xlabel!("Energy/Jzz")
+ylabel!("intensity")
+savefig("testoutput/$(ofname)_pm_im.png")
 
 p = plot()
 for (cs,res) in zip(csimlist, results)
@@ -133,9 +150,32 @@ for (cs,res) in zip(csimlist, results)
         yerr = sqrt.(var)./scale,
         label=cs.sim.name)
 end
-println("Saving to $(ofname)_pp.png")
+println("Saving to $(ofname)_pp_Re.png")
 
-title!("these should overlap")
+title!(L"\rm{Re}\langle S^+S^+\rangle")
 xlabel!("Energy/Jzz")
 ylabel!("intensity")
-savefig("testoutput/$(ofname)_pp.png")
+savefig("testoutput/$(ofname)_pp_Re.png")
+
+
+
+p = plot()
+for (cs,res) in zip(csimlist, results)
+
+    mean = imag.(res.Sqω_pp)./res.N
+    var = [max(0, v) for v in (res.Sqω_pp2./res.N .- mean.*mean)./res.N]
+
+    scale = prod(cs.sim.lat.L)
+
+    plot!(Egrid, mean./scale,
+        yerr = sqrt.(var)./scale,
+        label=cs.sim.name)
+end
+println("Saving to $(ofname)_pp_Im.png")
+
+
+title!(L"\rm{Im}\langle S^+S^+\rangle")
+xlabel!("Energy/Jzz")
+ylabel!("intensity")
+savefig("testoutput/$(ofname)_pp_Im.png")
+

@@ -507,19 +507,20 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 	
     QQ_tensor = SMatrix{3,3,Float64}(diagm([1.,1.,1.]) - Q*Q'/(Q'*Q))
 
-    #q = geom.wrap_BZ(csim.sim.lat, Q)
-
+	# preallocate everything
     f=length(csim.sim.lat.tetra_sites)
     S_pm = zeros(ComplexF64, f,f)
     S_pp = zeros(ComplexF64, f,f)
     S_magnetic = zeros(Float64, f,f)
 
+    delta_S_pm = zeros(ComplexF64, f,f)
+    delta_S_pp = zeros(ComplexF64, f,f)
+    delta_S_mag = [ zeros(Float64, f,f) for _ in [1 1; 1 1] ]
+
+
     jB =0
     jpB=0
     
-
-    delta_S_pm = Array{ComplexF64}(undef, f,f)
-    # delta_S_pp = Array{ComplexF64}(undef, f,f)
     
 
     A_sites = geom.A_sites(csim.sim.lat)
@@ -539,7 +540,7 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
             # the "l'" bit
 			x2 = U2[jB, :] .* conj.(U2[jpB, :]) ./ (2*E2)
  
-            delta_S_pm = (
+            delta_S_pm .= (
 				exp(1im*(csim.sim.A[jA,μ]-csim.sim.A[jpA, ν]))*x1*transpose(x2)
 				*exp(1im* ( Q -2*p2)'* (geom.pyro[μ]-geom.pyro[ν])) 
 				)
@@ -551,7 +552,7 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
             x3 = conj.(U1[jA, :]) .* U1[jpB, :] ./ (2*E1) 
             x4 = conj.(U2[jpA, :]) .* U2[jB, :] ./ (2*E2)
 
-            delta_S_pp = (
+            delta_S_pp .= (
                 exp(1im*(Q)'* ( geom.pyro[μ] - geom.pyro[ν]))* 
                 exp(-2im*p2'* geom.pyro[μ])*
                 exp(-2im*p1'*geom.pyro[ν]))*
@@ -560,19 +561,17 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 			S_pp .+= delta_S_pp
             
 
-			if g_tensor !== nothing
-				
-				delta_S_xx =  0.5*real.(delta_S_pp .+ delta_S_pm)
-				delta_S_xy =  0.5*imag.(delta_S_pp .- delta_S_pm)
-				delta_S_yx =  0.5*imag.(delta_S_pp .+ delta_S_pm)
-				delta_S_yy = -0.5*real.(delta_S_pp .- delta_S_pm)
+			if g_tensor !== nothing	
+                delta_S_mag[1,1] .=  0.5*real.(delta_S_pp .+ delta_S_pm)
+				delta_S_mag[1,2] .=  0.5*imag.(delta_S_pp .- delta_S_pm)
+				delta_S_mag[2,1] .=  0.5*imag.(delta_S_pp .+ delta_S_pm)
+                delta_S_mag[2,2] .= -0.5*real.(delta_S_pp .- delta_S_pm)
 
-                S_magnetic .+=  R1[:,1]' * QQ_tensor * (
-                    R2[:,1] .* delta_S_xx + R2[:,2] .* delta_S_xy
-                    )
-                S_magnetic .+=  R1[:,2]' * QQ_tensor * (
-                    R2[:,1] .* delta_S_yx + R2[:,2] .* delta_S_yy
-                    )
+                S_magnetic .+= sum(
+                    (R1[:, a]' * QQ_tensor * R2[:, b]) .* delta_S_mag[a, b]
+                    for a = 1:2, b = 1:2
+                )
+
 			end
 			
         end
