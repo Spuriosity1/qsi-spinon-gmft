@@ -1,3 +1,4 @@
+using Pkg; Pkg.activate(".")
 include("../src/SimFunctions.jl")
 
 function run_sim(;data_dir, figure_dir,
