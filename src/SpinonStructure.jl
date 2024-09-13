@@ -624,7 +624,7 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
                 exp(1im*(csim.sim.A[jA,μ]+csim.sim.A[jpA, ν]))
 			S_pp .+= delta_S_pp
             
-#=
+
 			if g_tensor !== nothing	
                 delta_S_mag[1,1] .=  0.5*real.(delta_S_pp .+ delta_S_pm)
 				delta_S_mag[1,2] .=  0.5*imag.(delta_S_pp .- delta_S_pm)
@@ -637,7 +637,7 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
                 )
 
 			end
-=#			
+			
         end
     end
     E = [e1 + e2 for e1 in E1, e2 in E2]::Matrix{Float64}
