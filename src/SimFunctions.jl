@@ -4,7 +4,7 @@ using ProgressMeter
 using JLD
 using HDF5
 using Printf
-
+using Optim
 
 include("BZMath.jl")
 include("SpinonStructure.jl")
@@ -376,14 +376,49 @@ function calc_spinons_along_path(output_dir;
         sim=csim.sim)
 end
 
+"""
+Jpm -> The Jpm parameter
+B -> a (3,1) vector of magnetic int_fields
+Returns a 4-component Vector{Float64} of g-values,
+corresponding to plaquettes with normals in the directions set by geom.pyro
+i.e. [1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1] respectively
+"""
 function Jring(Jpm, B)
     # assumes units of Jy
     ring_normals =  [1. 1 1; 1 -1 -1;-1 1 -1;-1 -1 1]
-    
+
     return (3 * Jpm^3/2) .- (5/12) .* Jpm^2 .* (ring_normals * B).^2
 end
 
-# some useful defaults
+"""
+Calculates the minimum flux of the plaquettes for the hamiltonian
+        H = ∑ g_μ cos( Φ_μ )
+returns [Φ1,Φ2,Φ3,Φ4]
+"""
+function optimal_flux(g)
+    objective(x) = g[1]*cos(-sum(x)) + sum(g[2:4].*cos.(x))
+    function gradient!(G,x)
+        G[1] = g[1]*sin(sum(x)) - g[2]*sin(x[1])
+        G[2] = g[1]*sin(sum(x)) - g[3]*sin(x[2])
+        G[3] = g[1]*sin(sum(x)) - g[4]*sin(x[3])
+    end
+    lower = [0.,0.,0.].-1e-5
+    upper = [π,π,π]
+
+    results = [
+        optimize(objective, lower, upper, x0)
+        for x0 in [zeros(3), (π-0.1)*ones(3), π/3*ones(3), 2π/3*ones(3) ]
+    ]
+    I = argmin(res.minimum for res in results)
+    min_x = results[I].minimizer
+    X= mod.([-sum(min_x), min_x...].+π,2π).-π
+    if X[1] > 0
+        X .*= -1
+    end
+    return X
+end
+
+        # some useful defaults
 
 const integration_settings = Dict(
     "very_fast" =>  IntegrationParameters(n_K_samples=10    ),

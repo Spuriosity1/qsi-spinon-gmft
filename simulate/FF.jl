@@ -11,11 +11,10 @@ Returns the ratio of g0 to g1 in the special case B || [111], given a particular
 Φ0, the flux on plaquette 0 
 The other three plaquettes have flux -Φ0/3
 """
-g0_g123_ratio_from_flux(desired_Φ0) = -sin((desired_Φ0-π)/3)/sin(desired_Φ0-π)
-
-
-#old, broken
-#g0_g123_ratio_from_flux(desired_Φ0) = (1-4*cos(desired_Φ0/3)^2)^-1
+function g0_g123_ratio_from_flux(desired_Φ0)
+    desired_Φ0 = mod(desired_Φ0+π,2π)-π
+    return -sin(abs(desired_Φ0)/3+2π/3)/sin(abs(desired_Φ0))
+end
 
 """
 FF_111_B(desired_Φ, Jpm)
@@ -30,6 +29,11 @@ function FF_111_B(desired_Φ0, Jpm)
     xp = g0_g123_ratio_from_flux(desired_Φ0)
 	B = (3* sqrt(6/5) * sqrt(Jpm - Jpm * xp))/sqrt(18 - xp)
     #B = sqrt(Jpm* 6*(1-xp)/ (xp*5/9 - 5) )
+    # verify correctness
+    g = Jring(Jpm, B)
+    Φ =  optimal_flux(g)
+    @assert norm(abs(Φ[1]) - abs(desired_Φ0)) < 1e-9
+
     return B
 end
 
