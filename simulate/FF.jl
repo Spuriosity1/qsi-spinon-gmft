@@ -27,12 +27,18 @@ Returns the (111) field needed to realise the prescribed flux
 function FF_111_B(desired_Φ0, Jpm)
     # x = g0/g1
     xp = g0_g123_ratio_from_flux(desired_Φ0)
-	B = (3* sqrt(6/5) * sqrt(Jpm - Jpm * xp))/sqrt(18 - xp)
-    #B = sqrt(Jpm* 6*(1-xp)/ (xp*5/9 - 5) )
+    B = 3 * sqrt( (6*Jpm *(1- xp) )/ (45-5*xp))
     # verify correctness
-    g = Jring(Jpm, B)
+    println(B)
+    g = Jring(Jpm, B*[1,1,1]/√3)
+    println(g)
+    @assert norm(g[1]/g[2] - xp) < 1e-9
     Φ =  optimal_flux(g)
-    @assert norm(abs(Φ[1]) - abs(desired_Φ0)) < 1e-9
+    if norm(abs(Φ[1]) - abs(desired_Φ0)) > 1e-2
+        println("Error: flux does not work")
+        println("Requested $(desired_Φ0), got $(Φ[1])")
+        throw("bad flux")
+    end
 
     return B
 end

@@ -383,7 +383,7 @@ Returns a 4-component Vector{Float64} of g-values,
 corresponding to plaquettes with normals in the directions set by geom.pyro
 i.e. [1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1] respectively
 """
-function Jring(Jpm, B)
+function Jring(Jpm::Float64, B::Vector{Float64})
     # assumes units of Jy
     ring_normals =  [1. 1 1; 1 -1 -1;-1 1 -1;-1 -1 1]
 
