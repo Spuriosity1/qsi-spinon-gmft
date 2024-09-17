@@ -7,7 +7,8 @@ Bmin =sqrt(9*Jpm/5)
 println("minimum B = ",Bmin)
 
 magnetic_fields = [
-bb*[1,1,0]/√2 for bb in [Bmin+0.1, Bmin + 0.2, Bmin + 0.3]
+#bb*[1,1,0]/√2 for bb in [Bmin+0.1, Bmin + 0.2, Bmin + 0.3]
+bb*[1,1,0]/√2 for bb in [Bmin+0.1, Bmin +0.15]
     ]
 
 
