@@ -1,6 +1,89 @@
 using ProgressMeter
 include("SaveFunctions.jl")
-        
+
+using StaticArrays
+
+
+"""
+    equaltime_corr(q, csim, N_p; g_tensor=nothing)
+
+Energy-integrated structure factor at a single external momentum `q`, MC-averaged
+over the internal spinon momentum `p` sampled uniformly over one primitive
+reciprocal cell (which tiles the BZ).
+
+Each spectral peak of weight `S` sits under `∫dω = S`, so integrating over all ω
+returns the sum of the raw `corr_at` weights -- no energy grid or broadening
+required. Returns `(Spm, Spp, Smag)`; any component is `NaN` if every sample hit
+a negative-dispersion `DomainError`.
+"""
+function equaltime_corr(q::SVector{3,Float64}, csim::CompiledModel, N_p::Int;
+        g_tensor=nothing)
+    acc_pm = 0.0
+    acc_pp = 0.0
+    acc_mag = 0.0
+    ngood = 0
+    for _ in 1:N_p
+        p = geom.primitive_recip_basis * (SVector{3}(rand(), rand(), rand()) .- 0.5)
+        try
+            _, S_pm, S_pp, S_mag = corr_at(q, p, csim, g_tensor)
+            acc_pm  += real(sum(S_pm))
+            acc_pp  += real(sum(S_pp))
+            acc_mag += real(sum(S_mag))
+            ngood += 1
+        catch e
+            e isa DomainError || rethrow(e)   # skip negative-dispersion points
+        end
+    end
+    ngood == 0 && return (NaN, NaN, NaN)
+    return (acc_pm / ngood, acc_pp / ngood, acc_mag / ngood)
+end
+
+
+"""
+    calc_hhl_equaltime(output_dir; csim, N_p=4000, nk=121, hmax=4.0, g_tensor=nothing)
+
+Sweep the (hhl) plane, evaluating the equal-time structure factor at each
+`q = (2π/8)·(h, h, l)` with `h, l ∈ [-hmax, hmax]` r.l.u. on an `nk × nk` grid.
+`N_p` is the number of internal-momentum MC samples per q. Saves Spm/Spp/Smag to
+an HDF5 file and returns its path.
+
+Reciprocal-space units: the integer lattice uses a conventional cubic cell of
+side 8, so a reciprocal-lattice unit (r.l.u.) is 2π/8.
+"""
+function calc_hhl_equaltime(output_dir::String;
+        csim::CompiledModel,
+        N_p::Int=4000,
+        nk::Int=121,
+        hmax::Float64=4.0,
+        g_tensor=nothing)
+
+    rlu   = 2π / 8
+    haxis = collect(range(-hmax, hmax, length=nk))
+    laxis = collect(range(-hmax, hmax, length=nk))
+
+    Spm  = fill(NaN, nk, nk)       # indexed [il, ih]
+    Spp  = fill(NaN, nk, nk)
+    Smag = fill(NaN, nk, nk)
+
+    prog = Progress(nk * nk, desc="(hhl) equal-time: ")
+    Threads.@threads for ih in 1:nk
+        h = haxis[ih]
+        for il in 1:nk
+            l = laxis[il]
+            q = SVector{3,Float64}(rlu * h, rlu * h, rlu * l)
+            Spm[il, ih], Spp[il, ih], Smag[il, ih] =
+                equaltime_corr(q, csim, N_p; g_tensor=g_tensor)
+            next!(prog)
+        end
+    end
+    finish!(prog)
+
+    return save_hhl_equaltime(output_dir;
+        haxis=haxis, laxis=laxis, Spm=Spm, Spp=Spp, Smag=Smag,
+        csim=csim, N_p=N_p)
+end
+
+
 ###########
 # expensive calculations
 """

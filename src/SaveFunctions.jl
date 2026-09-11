@@ -123,3 +123,37 @@ function save_spinons(output_dir::String;
 end
 
 
+"""
+    save_hhl_equaltime(output_dir; haxis, laxis, Spm, Spp, Smag, csim, N_p)
+
+Write the equal-time (energy-integrated) (hhl)-plane structure factor to a plain
+HDF5 file (easy to read from python/matplotlib). `Spm`, `Spp`, `Smag` are
+`[il, ih]` matrices over the `laxis`/`haxis` grids (r.l.u.). Returns the path.
+"""
+function save_hhl_equaltime(output_dir::String;
+        haxis::Vector{Float64},
+        laxis::Vector{Float64},
+        Spm::Matrix{Float64},
+        Spp::Matrix{Float64},
+        Smag::Matrix{Float64},
+        csim::CompiledModel,
+        N_p::Int,
+        prefix="hhl_equaltime")
+
+    isdir(output_dir) || mkpath(output_dir)
+    name = joinpath(output_dir, prefix * sim_identifier(csim.sim) * ".h5")
+    rm(name, force=true)
+    h5open(name, "w") do f
+        f["h"]      = haxis        # abscissa (hh0 direction), r.l.u.
+        f["l"]      = laxis        # ordinate (00l direction), r.l.u.
+        f["Spm"]    = Spm          # [il, ih]
+        f["Spp"]    = Spp          # [il, ih]
+        f["Smag"]   = Smag         # [il, ih]
+        f["Jpm"]    = csim.sim.Jpm
+        f["N_p"]    = N_p
+        f["lambda"] = csim.lambda
+    end
+    return name
+end
+
+

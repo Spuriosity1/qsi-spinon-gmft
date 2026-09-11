@@ -522,8 +522,6 @@ Returns:
 `Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
 
 Notes: 
-
-
  I   x1 on the unprimed coords must be conjugated
      relative to x2 on unprimed coords, or else break gauge 
      invariance 
@@ -534,7 +532,7 @@ Notes:
  III The form e^iA_{rA,rAp} e^-iA_{rA+μ,rAp+ν} is certainly correct
 
 """
-function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
+function corr_at_old(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing
     )
   
@@ -645,6 +643,126 @@ function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
 end
 
 
+
+
+"""
+```
+	corr_at(q::Vec3_F64, p::Vec3_F64, sim::AbstractCompiledHamiltonian)
+	-> E, Spm, Spp, Smagnetic
+```
+
+Calculates the contribution of kspace points(q ± p) to the p integral in 
+`corr_Spm`, meaning <S+ S->. Let there be N tetrahedra in `sim`, i.e. N bands.
+Returns: 
+`E`, an (N, N) matrix of e1 + e2 energies corresponding to Dirac delta peaks
+`Spm`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S-(-k,0)>
+`Spp`, an (N, N) matrix of spectral weights giving the heights of these peaks in <S+(k,w) S+(-k,0)>
+
+Notes: 
+ I   x1 on the unprimed coords must be conjugated
+     relative to x2 on unprimed coords, or else break gauge 
+     invariance 
+     A \to A + dΓ
+     U_{rl} \to e^{iΓ_r} U_{rl}
+ II  this conjugation of x1 x2* must be consistent relative to 
+     this sign of A
+ III The form e^iA_{rA,rAp} e^-iA_{rA+μ,rAp+ν} is certainly correct
+
+"""
+function corr_at(Q::Vec3_F64, p1::Vec3_F64, csim::CompiledModel,
+	g_tensor::Union{Nothing, SMatrix{3,3,Float64}}=nothing
+    )
+
+    E1, U1 = spinon_dispersion( p1, csim)
+    #p2 = geom.wrap_BZ(csim.sim.lat, p1+Q) # p1+Q
+	p2 = p1+Q
+
+    E2, U2 = spinon_dispersion( p2, csim)
+    # Both p's must appear with the same sign, or else we break p-> p + delta 
+    # invariance (required by gauge symmetry)
+	
+    QQ_tensor = SMatrix{3,3,Float64}(diagm([1.,1.,1.]) - Q*Q'/(Q'*Q))
+
+	# preallocate everything
+    f=length(csim.sim.lat.tetra_sites)
+    S_pm = zeros(ComplexF64, f,f)
+    S_pp = zeros(ComplexF64, f,f)
+    S_magnetic = zeros(Float64, f,f)
+
+    A_sites = geom.A_sites(csim.sim.lat)
+    N_A = length(A_sites)
+
+    #   phase_pm carries the <S+ S-> phase  exp(i[A_{jA,μ} + ( Q - 2 p2)·b_μ])
+    #   phase_pp carries the <S+ S+> phase  exp(i[A_{jA,μ} + (-Q - 2 p1)·b_μ])
+    phase_pm = Matrix{ComplexF64}(undef, N_A, 4)
+    phase_pp = Matrix{ComplexF64}(undef, N_A, 4)
+    for jA = 1:N_A, μ = 1:4
+        phase_pm[jA, μ] = exp(1im*(csim.sim.A[jA,μ] + ( Q - 2*p2)' * geom.pyro[μ]))
+        phase_pp[jA, μ] = exp(1im*(csim.sim.A[jA,μ] + (-Q - 2*p1)' * geom.pyro[μ]))
+    end
+
+    # Precompute the g-tensor / transverse-projector contraction. It depends only
+    # on the sublattices μ, ν, so Qc[μ,ν][a,b] = R_μ[:,a]' Q⊥ R_ν[:,b] with
+    # R_μ = g · axis_μ, matching the (a,b ∈ {1,2}) transverse block of corr_at.
+    Qc = nothing
+    if g_tensor !== nothing
+        R = [g_tensor * geom.axis[μ] for μ = 1:4]
+        Qc = [ SMatrix{2,2,Float64}(
+                   [R[μ][:, a]' * QQ_tensor * R[ν][:, b] for a = 1:2, b = 1:2])
+               for μ = 1:4, ν = 1:4 ]
+    end
+
+    # μ-resolved partial coherence factors, reused across all three channels.
+    #   Wpm[μ] = Σ_{jA} conj(U1[jA,l]) U2[jB,lp] phase_pm[jA,μ]
+    #   Wpp[μ] = Σ_{jA} U1[jB,l] conj(U2[jA,lp]) phase_pp[jA,μ]   (jB = nn(jA,μ))
+    # The site double-loop of corr_at factorises because the (jA,μ) and (jpA,ν)
+    # phases separate; the full sums are then
+    #   S_pm = |Σ_μ Wpm_μ|^2 / D ,  S_pp = (Σ_μ Wpm_μ)(Σ_ν Wpp_ν) / D
+    # with D = 4 E1[l] E2[lp]. This drops the cost from O(N_A^4) to O(N_A^3).
+    Wpm = Vector{ComplexF64}(undef, 4)
+    Wpp = Vector{ComplexF64}(undef, 4)
+
+    for l = 1:f, lp = 1:f
+        fill!(Wpm, 0)
+        fill!(Wpp, 0)
+        @inbounds for jA = 1:N_A
+            cu1 = conj(U1[jA, l])
+            cu2 = conj(U2[jA, lp])
+            for μ = 1:4
+                jB = csim.nn_index_A[jA][μ]
+                Wpm[μ] += cu1 * U2[jB, lp] * phase_pm[jA, μ]
+                Wpp[μ] += U1[jB, l] * cu2 * phase_pp[jA, μ]
+            end
+        end
+
+        D = 4 * E1[l] * E2[lp]
+        sum_pm = Wpm[1] + Wpm[2] + Wpm[3] + Wpm[4]
+        sum_pp = Wpp[1] + Wpp[2] + Wpp[3] + Wpp[4]
+
+        S_pm[l, lp] = abs2(sum_pm) / D
+        S_pp[l, lp] = sum_pm * sum_pp / D
+
+        if g_tensor !== nothing
+            acc = 0.0
+            @inbounds for μ = 1:4, ν = 1:4
+                # μν-resolved contributions (site-summed), matching corr_at's
+                # delta_S_pm / delta_S_pp before the a,b contraction.
+                dpm = Wpm[μ] * conj(Wpm[ν]) / D
+                dpp = Wpm[μ] * Wpp[ν]       / D
+                m11 =  0.5 * real(dpp + dpm)
+                m12 =  0.5 * imag(dpp - dpm)
+                m21 =  0.5 * imag(dpp + dpm)
+                m22 = -0.5 * real(dpp - dpm)
+                q = Qc[μ, ν]
+                acc += q[1,1]*m11 + q[1,2]*m12 + q[2,1]*m21 + q[2,2]*m22
+            end
+            S_magnetic[l, lp] = acc
+        end
+    end
+
+    E = [e1 + e2 for e1 in E1, e2 in E2]::Matrix{Float64}
+    return E, S_pm, S_pp, S_magnetic
+end
 
 
 
