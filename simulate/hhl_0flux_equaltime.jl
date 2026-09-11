@@ -1,16 +1,3 @@
-#!/usr/bin/env -S julia --threads=auto --project=..
-#SBATCH --job-name=hhl-0flux
-#SBATCH --output=hhl-0flux-%j.out
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --time=04:00:00
-#SBATCH --mem=8G
-#
-# Submit directly:  sbatch hhl_0flux_equaltime.jl
-# `--threads=auto` lets Julia use the allocated CPUs; on a shared node pin it
-# instead with `export JULIA_NUM_THREADS=$SLURM_CPUS_PER_TASK`.
-
 cd(@__DIR__)                       # resolve the ../ paths from the script's dir
 using Pkg; Pkg.activate("..")
 include("../src/SimFunctions.jl")
@@ -35,5 +22,5 @@ const sim = SimulationParameters("0flux-hhl",
 const csim = CompiledModel(sim)
 println("Compiled 0-flux model, spinon mass λ = $(csim.lambda)")
 
-outfile = calc_hhl_equaltime("../output"; csim=csim, N_p=4000, nk=121, hmax=4.0)
+outfile = calc_hhl_equaltime("../output"; csim=csim, N_p=40000, nk=121, hmax=4.0)
 println("Wrote $(outfile)")
