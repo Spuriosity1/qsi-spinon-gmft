@@ -35,5 +35,11 @@ const sim = SimulationParameters("0flux-hhl",
 const csim = CompiledModel(sim)
 println("Compiled 0-flux model, spinon mass λ = $(csim.lambda)")
 
-outfile = calc_hhl_equaltime("../output"; csim=csim, N_p=4000, nk=121, hmax=4.0)
+# g-tensor mapping local spin -> magnetic moment; required for Smag (the g-tensor
+# / transverse-projector block in corr_at is skipped when g_tensor is nothing).
+const G = @SMatrix [0. 0. 0.;
+                    0. 0. 0.;
+                    1. 0. 0.]
+
+outfile = calc_hhl_equaltime("../output"; csim=csim, N_p=4000, nk=33, hmax=4.0, g_tensor=G)
 println("Wrote $(outfile)")
